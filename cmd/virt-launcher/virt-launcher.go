@@ -22,6 +22,8 @@ package main
 import (
 	goflag "flag"
 	"fmt"
+	"net/http"
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -351,6 +353,11 @@ func main() {
 	pflag.Parse()
 
 	log.InitializeLogging("virt-launcher")
+
+	go func() {
+		err := http.ListenAndServe("0.0.0.0:6060", nil)
+		log.Log.V(2).Infof("http entry point creation error: %v", err)
+	}()
 
 	// check if virt-launcher verbosity should be changed
 	if verbosityStr, ok := os.LookupEnv("VIRT_LAUNCHER_LOG_VERBOSITY"); ok {
