@@ -90,9 +90,9 @@ const (
 
 	NAMESPACE = "kubevirt-test"
 
-	resourceCount = 76
-	patchCount    = 50
-	updateCount   = 27
+	resourceCount = 79
+	patchCount    = 51
+	updateCount   = 29
 )
 
 type KubeVirtTestData struct {
@@ -1235,6 +1235,7 @@ func (k *KubeVirtTestData) addAllWithExclusionMap(config *util.KubeVirtDeploymen
 	all = append(all, rbac.GetAllHandler(NAMESPACE)...)
 	all = append(all, rbac.GetAllController(NAMESPACE)...)
 	all = append(all, rbac.GetAllExportProxy(NAMESPACE)...)
+	all = append(all, rbac.GetAllConvertMachineType(NAMESPACE)...)
 	// crds
 	functions := []func() (*extv1.CustomResourceDefinition, error){
 		components.NewVirtualMachineInstanceCrd, components.NewPresetCrd, components.NewReplicaSetCrd,
@@ -2473,9 +2474,9 @@ var _ = Describe("KubeVirt Operator", func() {
 
 			Expect(kvTestData.totalAdds).To(Equal(resourceCount - expectedUncreatedResources + expectedTemporaryResources))
 
-			Expect(kvTestData.controller.stores.ServiceAccountCache.List()).To(HaveLen(4))
-			Expect(kvTestData.controller.stores.ClusterRoleCache.List()).To(HaveLen(9))
-			Expect(kvTestData.controller.stores.ClusterRoleBindingCache.List()).To(HaveLen(6))
+			Expect(kvTestData.controller.stores.ServiceAccountCache.List()).To(HaveLen(5))
+			Expect(kvTestData.controller.stores.ClusterRoleCache.List()).To(HaveLen(10))
+			Expect(kvTestData.controller.stores.ClusterRoleBindingCache.List()).To(HaveLen(7))
 			Expect(kvTestData.controller.stores.RoleCache.List()).To(HaveLen(5))
 			Expect(kvTestData.controller.stores.RoleBindingCache.List()).To(HaveLen(5))
 			Expect(kvTestData.controller.stores.CrdCache.List()).To(HaveLen(16))
