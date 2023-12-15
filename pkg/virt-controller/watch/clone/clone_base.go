@@ -4,6 +4,10 @@ import (
 	"fmt"
 	"time"
 
+	k8scorev1 "k8s.io/api/core/v1"
+
+	"kubevirt.io/kubevirt/pkg/storage/snapshot"
+
 	"kubevirt.io/api/clone"
 	snapshotv1alpha1 "kubevirt.io/api/snapshot/v1alpha1"
 
@@ -31,6 +35,7 @@ const (
 	RestoreCreated  Event = "RestoreCreated"
 	RestoreReady    Event = "RestoreReady"
 	TargetVMCreated Event = "TargetVMCreated"
+	PVCBound        Event = "PVCBound"
 
 	SnapshotDeleted    Event = "SnapshotDeleted"
 	SourceDoesNotExist Event = "SourceDoesNotExist"
@@ -43,6 +48,7 @@ type VMCloneController struct {
 	restoreInformer         cache.SharedIndexInformer
 	vmInformer              cache.SharedIndexInformer
 	snapshotContentInformer cache.SharedIndexInformer
+	pvcInformer             cache.SharedIndexInformer
 	recorder                record.EventRecorder
 
 	vmCloneQueue       workqueue.RateLimitingInterface
@@ -50,7 +56,7 @@ type VMCloneController struct {
 	cloneStatusUpdater *status.CloneStatusUpdater
 }
 
-func NewVmCloneController(client kubecli.KubevirtClient, vmCloneInformer, snapshotInformer, restoreInformer, vmInformer, snapshotContentInformer cache.SharedIndexInformer, recorder record.EventRecorder) (*VMCloneController, error) {
+func NewVmCloneController(client kubecli.KubevirtClient, vmCloneInformer, snapshotInformer, restoreInformer, vmInformer, snapshotContentInformer, pvcInformer cache.SharedIndexInformer, recorder record.EventRecorder) (*VMCloneController, error) {
 	ctrl := VMCloneController{
 		client:                  client,
 		vmCloneInformer:         vmCloneInformer,
@@ -58,6 +64,7 @@ func NewVmCloneController(client kubecli.KubevirtClient, vmCloneInformer, snapsh
 		restoreInformer:         restoreInformer,
 		vmInformer:              vmInformer,
 		snapshotContentInformer: snapshotContentInformer,
+		pvcInformer:             pvcInformer,
 		recorder:                recorder,
 		vmCloneQueue:            workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), "virt-controller-vmclone"),
 		vmStatusUpdater:         status.NewVMStatusUpdater(client),
@@ -93,6 +100,18 @@ func NewVmCloneController(client kubecli.KubevirtClient, vmCloneInformer, snapsh
 			AddFunc:    ctrl.handleRestore,
 			UpdateFunc: func(oldObj, newObj interface{}) { ctrl.handleRestore(newObj) },
 			DeleteFunc: ctrl.handleRestore,
+		},
+	)
+
+	if err != nil {
+		return nil, err
+	}
+
+	_, err = ctrl.pvcInformer.AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc:    ctrl.handlePVC,
+			UpdateFunc: func(oldObj, newObj interface{}) { ctrl.handlePVC(newObj) },
+			DeleteFunc: ctrl.handlePVC,
 		},
 	)
 
@@ -189,6 +208,43 @@ func (ctrl *VMCloneController) handleRestore(obj interface{}) {
 	}
 
 	for _, key := range restoreWaitingKeys {
+		ctrl.vmCloneQueue.AddRateLimited(key)
+	}
+}
+
+func (ctrl *VMCloneController) handlePVC(obj interface{}) {
+	if unknown, ok := obj.(cache.DeletedFinalStateUnknown); ok && unknown.Obj != nil {
+		obj = unknown.Obj
+	}
+
+	pvc, ok := obj.(*k8scorev1.PersistentVolumeClaim)
+	if !ok {
+		log.Log.Errorf(unknownTypeErrFmt, "persistentvolumeclaim")
+		return
+	}
+
+	var (
+		restoreName string
+		exists      bool
+	)
+
+	if restoreName, exists = pvc.Annotations[snapshot.RestoreNameAnnotation]; !exists {
+		return
+	}
+
+	if pvc.Status.Phase != k8scorev1.ClaimBound {
+		return
+	}
+
+	restoreKey := getKey(restoreName, pvc.Namespace)
+
+	succeededWaitingKeys, err := ctrl.vmCloneInformer.GetIndexer().IndexKeys(string(clonev1alpha1.Succeeded), restoreKey)
+	if err != nil {
+		log.Log.Object(pvc).Reason(err).Error("cannot get clone succeededWaitingKeys from " + string(clonev1alpha1.Succeeded) + " indexer")
+		return
+	}
+
+	for _, key := range succeededWaitingKeys {
 		ctrl.vmCloneQueue.AddRateLimited(key)
 	}
 }
