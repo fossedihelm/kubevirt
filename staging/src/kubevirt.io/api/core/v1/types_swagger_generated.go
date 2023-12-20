@@ -731,7 +731,20 @@ func (KubeVirtConfiguration) SwaggerDoc() map[string]string {
 		"ksmConfiguration":                   "KSMConfiguration holds the information regarding the enabling the KSM in the nodes (if available).",
 		"autoCPULimitNamespaceLabelSelector": "When set, AutoCPULimitNamespaceLabelSelector will set a CPU limit on virt-launcher for VMIs running inside\nnamespaces that match the label selector.\nThe CPU limit will equal the number of requested vCPUs.\nThis setting does not apply to VMIs with dedicated CPUs.",
 		"liveUpdateConfiguration":            "LiveUpdateConfiguration holds defaults for live update features",
+		"vmRolloutStrategy":                  "VmRolloutStrategy defines how changes to a VM object propapate to its VMI",
 	}
+}
+
+func (VmRolloutStrategy) SwaggerDoc() map[string]string {
+	return map[string]string{}
+}
+
+func (RolloutStrategyLiveUpdate) SwaggerDoc() map[string]string {
+	return map[string]string{}
+}
+
+func (RolloutStrategyStage) SwaggerDoc() map[string]string {
+	return map[string]string{}
 }
 
 func (ArchConfiguration) SwaggerDoc() map[string]string {
