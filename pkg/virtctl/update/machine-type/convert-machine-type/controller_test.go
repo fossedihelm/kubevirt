@@ -144,20 +144,18 @@ var _ = Describe("JobController", func() {
 			vmInformer, _ = testutils.NewFakeInformerFor(&virtv1.VirtualMachine{})
 			vmiInformer, _ = testutils.NewFakeInformerFor(&virtv1.VirtualMachineInstance{})
 
-			controller, err = NewJobController(vmInformer, vmiInformer, virtClient)
+			controller, err = NewJobController(vmInformer, vmiInformer, virtClient, machineTypeGlob, false)
 			Expect(err).ToNot(HaveOccurred())
 
 			mockQueue = testutils.NewMockWorkQueue(controller.Queue)
 			controller.Queue = mockQueue
 
-			go controller.VmInformer.Run(stop)
-			go controller.VmiInformer.Run(stop)
-			Expect(cache.WaitForCacheSync(stop, controller.VmInformer.HasSynced)).To(BeTrue())
+			vmInformer.Run(stop)
+			vmiInformer.Run(stop)
+			Expect(cache.WaitForCacheSync(stop, vmInformer.HasSynced)).To(BeTrue())
 
 			virtClient.EXPECT().VirtualMachine(gomock.Any()).Return(vmInterface).AnyTimes()
 			virtClient.EXPECT().VirtualMachineInstance(gomock.Any()).Return(vmiInterface).AnyTimes()
-
-			MachineTypeGlob = machineTypeGlob
 			Testing = true
 		})
 
@@ -195,8 +193,12 @@ var _ = Describe("JobController", func() {
 			})
 
 			Context("when restart-now env is set", func() {
+				BeforeEach(func() {
+					controller, err = NewJobController(vmInformer, vmiInformer, virtClient, machineTypeGlob, true)
+					Expect(err).ToNot(HaveOccurred())
+				})
+
 				It("Should immediately restart any running VMs that have been updated", func() {
-					RestartNow = true
 					vm = newVM(machineTypeNeedsUpdate, v1.NamespaceDefault, true, false)
 					vmi = newVMIWithMachineType(machineTypeNeedsUpdate, vm.Name)
 					addVm(vm)
@@ -207,7 +209,6 @@ var _ = Describe("JobController", func() {
 					vmInterface.EXPECT().Restart(context.Background(), vm.Name, &virtv1.RestartOptions{}).Times(1)
 
 					controller.Execute()
-					RestartNow = false
 				})
 			})
 		})
