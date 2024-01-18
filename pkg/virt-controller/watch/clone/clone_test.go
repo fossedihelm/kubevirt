@@ -38,6 +38,7 @@ import (
 	framework "k8s.io/client-go/tools/cache/testing"
 	"k8s.io/client-go/tools/record"
 
+	"kubevirt.io/api/clone"
 	clonev1alpha1 "kubevirt.io/api/clone/v1alpha1"
 	virtv1 "kubevirt.io/api/core/v1"
 	snapshotv1alpha1 "kubevirt.io/api/snapshot/v1alpha1"
@@ -180,6 +181,16 @@ var _ = Describe("Clone", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(clone).ToNot(BeNil())
 		Expect(clone.Status.Phase).To(Equal(phase))
+	}
+
+	expectCloneDeletion := func() {
+		client.Fake.PrependReactor("delete", clone.ResourceVMClonePlural, func(action testing.Action) (handled bool, ret runtime.Object, err error) {
+			delete, ok := action.(testing.DeleteAction)
+			Expect(ok).To(BeTrue())
+			Expect(delete.GetName()).To(Equal(vmClone.Name))
+
+			return true, nil, nil
+		})
 	}
 
 	expectEvent := func(event Event) {
@@ -557,6 +568,19 @@ var _ = Describe("Clone", func() {
 				})
 			})
 
+			When("target VM is deleted", func() {
+				It("should delete the vm clone resource", func() {
+					vmClone.Status.TargetName = pointer.P("target-vm-name")
+					vmClone.Status.Phase = clonev1alpha1.Succeeded
+
+					addVM(sourceVM)
+					addClone(vmClone)
+					expectCloneDeletion()
+					//no target vm added => target vm deleted
+
+					controller.Execute()
+				})
+			})
 		})
 
 		Context("with source snapshot", func() {
