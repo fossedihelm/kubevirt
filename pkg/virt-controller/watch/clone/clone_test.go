@@ -232,6 +232,16 @@ var _ = Describe("Clone", func() {
 		})
 	}
 
+	expectCloneDeletion := func() {
+		client.Fake.PrependReactor("delete", clone.ResourceVMClonePlural, func(action testing.Action) (handled bool, ret runtime.Object, err error) {
+			delete, ok := action.(testing.DeleteAction)
+			Expect(ok).To(BeTrue())
+			Expect(delete.GetName()).To(Equal(vmClone.Name))
+
+			return true, nil, nil
+		})
+	}
+
 	expectEvent := func(event Event) {
 		testutils.ExpectEvent(recorder, string(event))
 	}
@@ -625,6 +635,21 @@ var _ = Describe("Clone", func() {
 					})
 				})
 			})
+
+			When("target VM is deleted", func() {
+				It("should delete the vm clone resource", func() {
+					vmClone.Status.TargetName = pointer.P("target-vm-name")
+					vmClone.Status.Phase = clonev1alpha1.Succeeded
+
+					addVM(sourceVM)
+					addClone(vmClone)
+					expectCloneDeletion()
+					//no target vm added => target vm deleted
+
+					controller.Execute()
+				})
+			})
+
 		})
 
 		Context("with source snapshot", func() {
