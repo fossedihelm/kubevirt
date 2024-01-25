@@ -85,8 +85,8 @@ const (
 	DefaultVirtWebhookClientQPS           = 200
 	DefaultVirtWebhookClientBurst         = 400
 
-	DefaultMaxHotplugRatio             = 4
-	DefaultVmRolloutStrategyLiveUpdate = false
+	DefaultMaxHotplugRatio   = 4
+	DefaultVmRolloutStrategy = v1.RolloutStrategyStage
 )
 
 func IsAMD64(arch string) bool {
@@ -474,11 +474,12 @@ func (c *ClusterConfig) IsVmRolloutStrategyLiveUpdate() bool {
 		return false
 	}
 	liveConfig := c.GetConfig().VmRolloutStrategy
+	// with default value this should never happen
 	if liveConfig == nil {
-		return DefaultVmRolloutStrategyLiveUpdate
+		return DefaultVmRolloutStrategy == v1.RolloutStrategyLiveUpdate
 	}
 
-	return liveConfig.LiveUpdate != nil
+	return *liveConfig == v1.RolloutStrategyLiveUpdate
 }
 
 func (c *ClusterConfig) GetNetworkBindings() map[string]v1.InterfaceBindingPlugin {

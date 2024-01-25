@@ -11,11 +11,11 @@ import (
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
-	"k8s.io/utils/pointer"
 
 	v1 "kubevirt.io/api/core/v1"
 
 	cmdv1 "kubevirt.io/kubevirt/pkg/handler-launcher-com/cmd/v1"
+	"kubevirt.io/kubevirt/pkg/pointer"
 	"kubevirt.io/kubevirt/pkg/testutils"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 )
@@ -308,6 +308,52 @@ var _ = Describe("test configuration", func() {
 	},
 		Entry("is set, GetMaxHotplugRatio should return the set value", 100, 100),
 		Entry("is unset, GetMaxHotplugRatio should return the default", 0, virtconfig.DefaultMaxHotplugRatio),
+	)
+
+	Context("IsVmRolloutStrategyLiveUpdate,", func() {
+		When("VMLiveUpdateFeaturesGate is enabled,", func() {
+			DescribeTable("should return", func(value *v1.VmRolloutStrategy, expected bool) {
+				clusterConfig, _, _ := testutils.NewFakeClusterConfigUsingKVConfig(&v1.KubeVirtConfiguration{
+					DeveloperConfiguration: &v1.DeveloperConfiguration{
+						FeatureGates: []string{virtconfig.VMLiveUpdateFeaturesGate},
+					},
+					VmRolloutStrategy: value,
+				})
+				Expect(clusterConfig.IsVmRolloutStrategyLiveUpdate()).To(BeEquivalentTo(expected))
+			},
+				Entry("true if vmRolloutStrategy is `LiveUpdate`", pointer.P(v1.RolloutStrategyLiveUpdate), true),
+				Entry("false if vmRolloutStrategy is `Stage`", pointer.P(v1.RolloutStrategyStage), false),
+				Entry("the default, if vmRolloutStrategy is unset", nil, false),
+			)
+		})
+
+		When("VMLiveUpdateFeaturesGate is disbled,", func() {
+			DescribeTable("should return", func(value *v1.VmRolloutStrategy, expected bool) {
+				clusterConfig, _, _ := testutils.NewFakeClusterConfigUsingKVConfig(&v1.KubeVirtConfiguration{
+					DeveloperConfiguration: &v1.DeveloperConfiguration{
+						FeatureGates: []string{},
+					},
+					VmRolloutStrategy: value,
+				})
+				Expect(clusterConfig.IsVmRolloutStrategyLiveUpdate()).To(BeEquivalentTo(expected))
+			},
+				Entry("false if vmRolloutStrategy is `LiveUpdate`", pointer.P(v1.RolloutStrategyLiveUpdate), false),
+				Entry("false if vmRolloutStrategy is `Stage`", pointer.P(v1.RolloutStrategyStage), false),
+				Entry("false if vmRolloutStrategy is unset", nil, false),
+			)
+		})
+	})
+	DescribeTable("when VmRolloutStrategy", func(value *v1.VmRolloutStrategy, expected bool) {
+		clusterConfig, _, _ := testutils.NewFakeClusterConfigUsingKVConfig(&v1.KubeVirtConfiguration{
+			VmRolloutStrategy: value,
+		})
+		Expect(clusterConfig.IsVmRolloutStrategyLiveUpdate()).To(BeEquivalentTo(expected))
+	},
+		Entry("is set, IsVmRolloutStrategyLiveUpdate should return true if `LiveUpdate` is used and VMLiveUpdateFeaturesGate is enabled", pointer.P(v1.RolloutStrategyLiveUpdate), true),
+		Entry("is set, IsVmRolloutStrategyLiveUpdate should return false if `LiveUpdate` is used and VMLiveUpdateFeaturesGate is disabled", pointer.P(v1.RolloutStrategyLiveUpdate), true),
+		Entry("is set, IsVmRolloutStrategyLiveUpdate should return false if `Stage` is used and VMLiveUpdateFeaturesGate is enabled", pointer.P(v1.RolloutStrategyStage), false),
+		Entry("is set, IsVmRolloutStrategyLiveUpdate should return false if `Stage` is used and VMLiveUpdateFeaturesGate is disabled", pointer.P(v1.RolloutStrategyStage), false),
+		Entry("is unset, IsVmRolloutStrategyLiveUpdate should return the default", nil, false),
 	)
 
 	// deprecated
@@ -675,8 +721,8 @@ var _ = Describe("test configuration", func() {
 			v1.KubeVirtConfiguration{
 				NetworkConfiguration: &v1.NetworkConfiguration{
 					NetworkInterface:                  "test",
-					PermitSlirpInterface:              pointer.BoolPtr(true),
-					PermitBridgeInterfaceOnPodNetwork: pointer.BoolPtr(false),
+					PermitSlirpInterface:              pointer.P(true),
+					PermitBridgeInterfaceOnPodNetwork: pointer.P(false),
 				},
 			},
 			func(c *v1.KubeVirtConfiguration) interface{} {
@@ -687,8 +733,8 @@ var _ = Describe("test configuration", func() {
 			v1.KubeVirtConfiguration{
 				NetworkConfiguration: &v1.NetworkConfiguration{
 					NetworkInterface:                  string(v1.SlirpInterface),
-					PermitSlirpInterface:              pointer.BoolPtr(true),
-					PermitBridgeInterfaceOnPodNetwork: pointer.BoolPtr(false),
+					PermitSlirpInterface:              pointer.P(true),
+					PermitBridgeInterfaceOnPodNetwork: pointer.P(false),
 				},
 			},
 			func(c *v1.KubeVirtConfiguration) interface{} {
@@ -698,8 +744,8 @@ var _ = Describe("test configuration", func() {
 		Entry("when networkConfiguration set with empty NetworkInterface, should use the default",
 			v1.KubeVirtConfiguration{
 				NetworkConfiguration: &v1.NetworkConfiguration{
-					PermitSlirpInterface:              pointer.BoolPtr(true),
-					PermitBridgeInterfaceOnPodNetwork: pointer.BoolPtr(false),
+					PermitSlirpInterface:              pointer.P(true),
+					PermitBridgeInterfaceOnPodNetwork: pointer.P(false),
 				},
 			},
 			func(c *v1.KubeVirtConfiguration) interface{} {

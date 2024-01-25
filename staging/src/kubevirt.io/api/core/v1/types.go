@@ -2418,19 +2418,28 @@ type KubeVirtConfiguration struct {
 	LiveUpdateConfiguration *LiveUpdateConfiguration `json:"liveUpdateConfiguration,omitempty"`
 
 	// VmRolloutStrategy defines how changes to a VM object propapate to its VMI
+	// +nullable
+	// +kubebuilder:validation:Enum=LiveUpdate;Stage
 	VmRolloutStrategy *VmRolloutStrategy `json:"vmRolloutStrategy,omitempty"`
 }
 
-type VmRolloutStrategy struct {
-	LiveUpdate *RolloutStrategyLiveUpdate `json:"liveUpdate,omitempty"`
-	Stage      *RolloutStrategyStage      `json:"stage,omitempty"`
-}
+type VmRolloutStrategy string
 
-type RolloutStrategyLiveUpdate struct {
-}
+//type VmRolloutStrategy struct {
+//	LiveUpdate *RolloutStrategyLiveUpdate `json:"liveUpdate,omitempty"`
+//	Stage      *RolloutStrategyStage      `json:"stage,omitempty"`
+//}
 
-type RolloutStrategyStage struct {
-}
+const (
+	RolloutStrategyLiveUpdate VmRolloutStrategy = "LiveUpdate"
+	RolloutStrategyStage      VmRolloutStrategy = "Stage"
+)
+
+//type RolloutStrategyLiveUpdate struct {
+//}
+//
+//type RolloutStrategyStage struct {
+//}
 
 type ArchConfiguration struct {
 	Amd64               *ArchSpecificConfiguration `json:"amd64,omitempty"`

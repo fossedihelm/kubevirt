@@ -111,9 +111,9 @@ func (admitter *KubeVirtUpdateAdmitter) Admit(ar *admissionv1.AdmissionReview) *
 		results = append(results, validateInfraReplicas(newKV.Spec.Infra.Replicas)...)
 	}
 
-	if newKV.Spec.Configuration.VmRolloutStrategy != nil {
-		results = append(results, validateRolloutStrategy(newKV.Spec.Configuration.VmRolloutStrategy)...)
-	}
+	//if newKV.Spec.Configuration.VmRolloutStrategy != nil {
+	//	results = append(results, validateRolloutStrategy(newKV.Spec.Configuration.VmRolloutStrategy)...)
+	//}
 
 	response := validating_webhooks.NewAdmissionResponse(results)
 
@@ -436,19 +436,19 @@ func validateInfraReplicas(replicas *uint8) []metav1.StatusCause {
 	return statuses
 }
 
-func validateRolloutStrategy(strategy *v1.VmRolloutStrategy) []metav1.StatusCause {
-	var statuses []metav1.StatusCause
-
-	if (strategy.LiveUpdate == nil && strategy.Stage == nil) ||
-		(strategy.LiveUpdate != nil && strategy.Stage != nil) {
-		statuses = append(statuses, metav1.StatusCause{
-			Type:    metav1.CauseTypeFieldValueInvalid,
-			Message: "vmRolloutStrategy must contain exactly one element",
-		})
-	}
-
-	return statuses
-}
+//func validateRolloutStrategy(strategy *v1.VmRolloutStrategy) []metav1.StatusCause {
+//	var statuses []metav1.StatusCause
+//
+//	if (strategy.LiveUpdate == nil && strategy.Stage == nil) ||
+//		(strategy.LiveUpdate != nil && strategy.Stage != nil) {
+//		statuses = append(statuses, metav1.StatusCause{
+//			Type:    metav1.CauseTypeFieldValueInvalid,
+//			Message: "vmRolloutStrategy must contain exactly one element",
+//		})
+//	}
+//
+//	return statuses
+//}
 
 func featureGatesChanged(currKVSpec, newKVSpec *v1.KubeVirtSpec) bool {
 	currDevConfig := currKVSpec.Configuration.DeveloperConfiguration
