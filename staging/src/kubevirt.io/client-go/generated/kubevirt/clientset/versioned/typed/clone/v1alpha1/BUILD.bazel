@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "clone_client.go",
+        "clone_client_expansion.go",
         "doc.go",
         "generated_expansion.go",
         "virtualmachineclone.go",

@@ -62,3 +62,16 @@ func addKnownTypes(scheme *runtime.Scheme) error {
 	metav1.AddToGroupVersion(scheme, SchemeGroupVersion)
 	return nil
 }
+
+func AddKnownTypesGenerator(groupVersion schema.GroupVersion) func(scheme *runtime.Scheme) error {
+	// Adds the list of known types to api.Scheme.
+	return func(scheme *runtime.Scheme) error {
+		scheme.AddKnownTypes(groupVersion,
+			&VirtualMachineClone{},
+			&VirtualMachineCloneList{},
+		)
+		metav1.AddToGroupVersion(scheme, groupVersion)
+
+		return nil
+	}
+}

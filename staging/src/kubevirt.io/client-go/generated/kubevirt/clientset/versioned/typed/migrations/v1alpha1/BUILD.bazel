@@ -7,6 +7,7 @@ go_library(
         "generated_expansion.go",
         "migrationpolicy.go",
         "migrations_client.go",
+        "migrations_client_expansion.go",
     ],
     importpath = "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/migrations/v1alpha1",
     visibility = ["//visibility:public"],

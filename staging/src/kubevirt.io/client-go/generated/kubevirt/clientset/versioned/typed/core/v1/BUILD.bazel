@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "core_client.go",
+        "core_client_expansion.go",
         "doc.go",
         "generated_expansion.go",
         "kubevirt.go",

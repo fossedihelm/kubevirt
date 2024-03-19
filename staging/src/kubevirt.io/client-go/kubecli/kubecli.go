@@ -26,9 +26,6 @@ import (
 	"sync"
 
 	routev1 "github.com/openshift/client-go/route/clientset/versioned/typed/route/v1"
-
-	clonev1alpha1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/clone/v1alpha1"
-
 	secv1 "github.com/openshift/client-go/security/clientset/versioned/typed/security/v1"
 	"github.com/spf13/pflag"
 	extclient "k8s.io/apiextensions-apiserver/pkg/client/clientset/clientset"
@@ -48,6 +45,7 @@ import (
 	cdiclient "kubevirt.io/client-go/generated/containerized-data-importer/clientset/versioned"
 	k8ssnapshotclient "kubevirt.io/client-go/generated/external-snapshotter/clientset/versioned"
 	generatedclient "kubevirt.io/client-go/generated/kubevirt/clientset/versioned"
+	clonev1alpha1client "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/clone/v1alpha1"
 	migrationsv1 "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/typed/migrations/v1alpha1"
 	networkclient "kubevirt.io/client-go/generated/network-attachment-definition-client/clientset/versioned"
 	promclient "kubevirt.io/client-go/generated/prometheus-operator/clientset/versioned"
@@ -150,6 +148,7 @@ func GetKubevirtSubresourceClientFromFlags(master string, kubeconfig string) (Ku
 		return nil, err
 	}
 
+	//generatedKubeVirtClient, err := generatedclient.NewKubeVirtCliensetForConfig(config)
 	generatedKubeVirtClient, err := generatedclient.NewForConfig(config)
 	if err != nil {
 		return nil, err
@@ -205,7 +204,7 @@ func GetKubevirtSubresourceClientFromFlags(master string, kubeconfig string) (Ku
 		return nil, err
 	}
 
-	cloneClient, err := clonev1alpha1.NewForConfig(config)
+	cloneClient, err := clonev1alpha1client.NewForConfig(config)
 	if err != nil {
 		return nil, err
 	}
@@ -328,6 +327,7 @@ func GetKubevirtClientFromRESTConfig(config *rest.Config) (KubevirtClient, error
 	shallowCopy := *config
 	shallowCopy.GroupVersion = &v1.StorageGroupVersion
 	shallowCopy.NegotiatedSerializer = serializer.WithoutConversionCodecFactory{CodecFactory: Codecs}
+	//shallowCopy.NegotiatedSerializer = Codecs
 	shallowCopy.APIPath = "/apis"
 	shallowCopy.ContentType = runtime.ContentTypeJSON
 	if config.UserAgent == "" {
@@ -346,6 +346,7 @@ func GetKubevirtClientFromRESTConfig(config *rest.Config) (KubevirtClient, error
 		return nil, err
 	}
 
+	//generatedKubeVirtClient, err := generatedclient.NewKubeVirtCliensetForConfig(&shallowCopy)
 	generatedKubeVirtClient, err := generatedclient.NewForConfig(&shallowCopy)
 	if err != nil {
 		return nil, err
@@ -401,7 +402,7 @@ func GetKubevirtClientFromRESTConfig(config *rest.Config) (KubevirtClient, error
 		return nil, err
 	}
 
-	cloneClient, err := clonev1alpha1.NewForConfig(&shallowCopy)
+	cloneClient, err := clonev1alpha1client.NewForConfig(&shallowCopy)
 	if err != nil {
 		return nil, err
 	}

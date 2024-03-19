@@ -68,7 +68,7 @@ var _ = Describe("Kubevirt VirtualMachineInstance Client", func() {
 		Expect(err).ToNot(HaveOccurred())
 		Expect(fetchedVMI).To(Equal(vmi))
 	},
-		Entry("with regular server URL", ""),
+		FEntry("with regular server URL", ""),
 		Entry("with proxied server URL", proxyPath),
 	)
 

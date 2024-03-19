@@ -6,6 +6,7 @@ go_library(
         "doc.go",
         "generated_expansion.go",
         "snapshot_client.go",
+        "snapshot_client_expansion.go",
         "virtualmachinerestore.go",
         "virtualmachinesnapshot.go",
         "virtualmachinesnapshotcontent.go",

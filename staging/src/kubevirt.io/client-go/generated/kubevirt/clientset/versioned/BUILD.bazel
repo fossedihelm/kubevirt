@@ -4,6 +4,7 @@ go_library(
     name = "go_default_library",
     srcs = [
         "clientset.go",
+        "clientset_expansion.go",
         "doc.go",
     ],
     importpath = "kubevirt.io/client-go/generated/kubevirt/clientset/versioned",
