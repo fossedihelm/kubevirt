@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	util2 "kubevirt.io/kubevirt/pkg/util"
+
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 
@@ -151,12 +153,12 @@ type KubeVirtTestData struct {
 	addToCache      bool
 
 	defaultConfig     *util.KubeVirtDeploymentConfig
-	mockEnvVarManager util.EnvVarManager
+	mockEnvVarManager util2.EnvVarManager
 }
 
 func (k *KubeVirtTestData) BeforeTest() {
 
-	k.mockEnvVarManager = &util.EnvVarManagerMock{}
+	k.mockEnvVarManager = &util2.EnvVarManagerMock{}
 
 	err := k.mockEnvVarManager.Setenv(util.OldOperatorImageEnvName, fmt.Sprintf("%s/virt-operator:%s", "someregistry", "v9.9.9"))
 	Expect(err).NotTo(HaveOccurred())

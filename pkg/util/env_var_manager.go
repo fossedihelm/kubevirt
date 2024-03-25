@@ -7,6 +7,7 @@ import (
 
 type EnvVarManager interface {
 	Getenv(key string) string
+	LookupEnv(key string) (string, bool)
 	Setenv(key, value string) error
 	Unsetenv(key string) error
 	Environ() []string
@@ -16,6 +17,10 @@ type EnvVarManagerImpl struct{}
 
 func (e EnvVarManagerImpl) Getenv(key string) string {
 	return os.Getenv(key)
+}
+
+func (e EnvVarManagerImpl) LookupEnv(key string) (string, bool) {
+	return os.LookupEnv(key)
 }
 
 func (e EnvVarManagerImpl) Setenv(key, value string) error {
@@ -36,6 +41,11 @@ type EnvVarManagerMock struct {
 
 func (e *EnvVarManagerMock) Getenv(key string) string {
 	return e.envVars[key]
+}
+
+func (e *EnvVarManagerMock) LookupEnv(key string) (string, bool) {
+	val, exists := e.envVars[key]
+	return val, exists
 }
 
 func (e *EnvVarManagerMock) Setenv(key, value string) error {

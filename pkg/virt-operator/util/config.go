@@ -36,6 +36,7 @@ import (
 	v1 "kubevirt.io/api/core/v1"
 	clientutil "kubevirt.io/client-go/util"
 
+	"kubevirt.io/kubevirt/pkg/util"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 )
 
@@ -166,13 +167,13 @@ type KubeVirtDeploymentConfig struct {
 	PassthroughEnvVars map[string]string `json:"passthroughEnvVars,omitempty" optional:"true"`
 }
 
-var DefaultEnvVarManager EnvVarManager = EnvVarManagerImpl{}
+var DefaultEnvVarManager util.EnvVarManager = util.EnvVarManagerImpl{}
 
 func GetConfigFromEnv() (*KubeVirtDeploymentConfig, error) {
 	return GetConfigFromEnvWithEnvVarManager(DefaultEnvVarManager)
 }
 
-func GetConfigFromEnvWithEnvVarManager(envVarManager EnvVarManager) (*KubeVirtDeploymentConfig, error) {
+func GetConfigFromEnvWithEnvVarManager(envVarManager util.EnvVarManager) (*KubeVirtDeploymentConfig, error) {
 	// first check if we have the new deployment config json
 	c := envVarManager.Getenv(TargetDeploymentConfig)
 	if c != "" {
@@ -204,7 +205,7 @@ func GetTargetConfigFromKV(kv *v1.KubeVirt) *KubeVirtDeploymentConfig {
 	return GetTargetConfigFromKVWithEnvVarManager(kv, DefaultEnvVarManager)
 }
 
-func GetTargetConfigFromKVWithEnvVarManager(kv *v1.KubeVirt, envVarManager EnvVarManager) *KubeVirtDeploymentConfig {
+func GetTargetConfigFromKVWithEnvVarManager(kv *v1.KubeVirt, envVarManager util.EnvVarManager) *KubeVirtDeploymentConfig {
 	additionalProperties := getKVMapFromSpec(kv.Spec)
 	if kv.Spec.Configuration.MigrationConfiguration != nil &&
 		kv.Spec.Configuration.MigrationConfiguration.Network != nil {
@@ -269,7 +270,7 @@ func GetOperatorImage() string {
 	return GetOperatorImageWithEnvVarManager(DefaultEnvVarManager)
 }
 
-func GetOperatorImageWithEnvVarManager(envVarManager EnvVarManager) string {
+func GetOperatorImageWithEnvVarManager(envVarManager util.EnvVarManager) string {
 	image := envVarManager.Getenv(VirtOperatorImageEnvName)
 	if image != "" {
 		return image
@@ -278,7 +279,7 @@ func GetOperatorImageWithEnvVarManager(envVarManager EnvVarManager) string {
 	return envVarManager.Getenv(OldOperatorImageEnvName)
 }
 
-func getConfig(registry, tag, namespace string, additionalProperties map[string]string, envVarManager EnvVarManager) *KubeVirtDeploymentConfig {
+func getConfig(registry, tag, namespace string, additionalProperties map[string]string, envVarManager util.EnvVarManager) *KubeVirtDeploymentConfig {
 
 	// get registry and tag/shasum from operator image
 	imageString := GetOperatorImageWithEnvVarManager(envVarManager)
@@ -370,7 +371,7 @@ func VerifyEnv() error {
 	return VerifyEnvWithEnvVarManager(DefaultEnvVarManager)
 }
 
-func VerifyEnvWithEnvVarManager(envVarManager EnvVarManager) error {
+func VerifyEnvWithEnvVarManager(envVarManager util.EnvVarManager) error {
 	// ensure the operator image is valid
 	imageString := GetOperatorImageWithEnvVarManager(envVarManager)
 	if imageString == "" {
@@ -384,7 +385,7 @@ func GetPassthroughEnv() map[string]string {
 	return GetPassthroughEnvWithEnvVarManager(DefaultEnvVarManager)
 }
 
-func GetPassthroughEnvWithEnvVarManager(envVarManager EnvVarManager) map[string]string {
+func GetPassthroughEnvWithEnvVarManager(envVarManager util.EnvVarManager) map[string]string {
 	passthroughEnv := map[string]string{}
 
 	for _, env := range envVarManager.Environ() {

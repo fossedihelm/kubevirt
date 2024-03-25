@@ -28,14 +28,16 @@ import (
 
 	k8sv1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/rand"
+
+	"kubevirt.io/kubevirt/pkg/util"
 )
 
 var _ = Describe("Operator Config", func() {
 
-	var envVarManager EnvVarManager
+	var envVarManager util.EnvVarManager
 
 	BeforeEach(func() {
-		envVarManager = &EnvVarManagerMock{}
+		envVarManager = &util.EnvVarManagerMock{}
 		DefaultEnvVarManager = envVarManager
 	})
 
