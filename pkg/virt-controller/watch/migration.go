@@ -24,7 +24,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"math/rand"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1009,25 +1009,18 @@ func (c *MigrationController) handleTargetPodCreation(key string, migration *vir
 		return fmt.Errorf("failed to determine the number of running migrations: %v", err)
 	}
 
-	outboundMigrations, err := c.outboundMigrationsOnNode(vmi.Status.NodeName, runningMigrations)
-	if err != nil {
-		return err
+	clusterAtCapacity := len(runningMigrations) >= int(*c.clusterConfig.GetMigrationConfiguration().ParallelMigrationsPerCluster)
+	if clusterAtCapacity {
+		c.handleRequeue(key, unfinishedMigrations, int(*c.clusterConfig.GetMigrationConfiguration().ParallelMigrationsPerCluster))
+		return nil
 	}
 
-	nodeAtCapacity := outboundMigrations >= int(*c.clusterConfig.GetMigrationConfiguration().ParallelOutboundMigrationsPerNode)
-	clusterAtCapacity := len(runningMigrations) >= int(*c.clusterConfig.GetMigrationConfiguration().ParallelMigrationsPerCluster)
+	runningOutboundMigrations := c.outboundMigrationsOnNode(vmi.Status.NodeName, runningMigrations)
+	nodeAtCapacity := len(runningOutboundMigrations) >= int(*c.clusterConfig.GetMigrationConfiguration().ParallelOutboundMigrationsPerNode)
 
-	if nodeAtCapacity || clusterAtCapacity {
-		// Let's wait until some migrations are done. Printing a message here would spam the logs.
-		// XXX: Make this configurable, think about inbound migration limit, bandwidth per migration, and so on.
-		// Wait for a random amount of time, proportional to the number of unfinished migrations.
-		divider := 20
-		if nodeAtCapacity && clusterAtCapacity {
-			// Both the node and the cluster are at capacity, let's wait a bit more
-			divider /= 2
-		}
-		addAfter := time.Duration(rand.Intn(len(unfinishedMigrations)/divider+1) + 5)
-		c.Queue.AddAfter(key, time.Second*addAfter)
+	if nodeAtCapacity {
+		outboundMigrations := c.outboundMigrationsOnNode(vmi.Status.NodeName, unfinishedMigrations)
+		c.handleRequeue(key, outboundMigrations, int(*c.clusterConfig.GetMigrationConfiguration().ParallelOutboundMigrationsPerNode))
 		return nil
 	}
 
@@ -1061,6 +1054,15 @@ func (c *MigrationController) handleTargetPodCreation(key string, migration *vir
 		return c.createTargetPod(migration, vmi, sourcePod)
 	}
 	return nil
+}
+
+func (c *MigrationController) handleRequeue(key string, migrations []*virtv1.VirtualMachineInstanceMigration, maxParallel int) {
+	index := slices.IndexFunc(migrations, func(migration *virtv1.VirtualMachineInstanceMigration) bool {
+		k, err := controller.KeyFunc(migration)
+		return err != nil && key == k
+	})
+	addAfter := time.Duration((index - maxParallel + 1) * 5)
+	c.Queue.AddAfter(key, time.Second*addAfter)
 }
 
 func (c *MigrationController) createAttachmentPod(migration *virtv1.VirtualMachineInstanceMigration, vmi *virtv1.VirtualMachineInstance, virtLauncherPod *k8sv1.Pod) error {
@@ -1798,16 +1800,16 @@ func (c *MigrationController) deleteVMI(obj interface{}) {
 	}
 }
 
-func (c *MigrationController) outboundMigrationsOnNode(node string, runningMigrations []*virtv1.VirtualMachineInstanceMigration) (int, error) {
-	sum := 0
-	for _, migration := range runningMigrations {
+func (c *MigrationController) outboundMigrationsOnNode(node string, migrations []*virtv1.VirtualMachineInstanceMigration) []*virtv1.VirtualMachineInstanceMigration {
+	var result []*virtv1.VirtualMachineInstanceMigration
+	for _, migration := range migrations {
 		if vmi, exists, _ := c.vmiInformer.GetStore().GetByKey(migration.Namespace + "/" + migration.Spec.VMIName); exists {
 			if vmi.(*virtv1.VirtualMachineInstance).Status.NodeName == node {
-				sum = sum + 1
+				result = append(result, migration)
 			}
 		}
 	}
-	return sum, nil
+	return result
 }
 
 // findRunningMigrations calcules how many migrations are running or in flight to be triggered to running
