@@ -34,8 +34,9 @@ import (
 )
 
 const (
-	cannotMarshalJSONErrFmt = "Cannot Marshal to json: %s"
-	vmSubresourceURLFmt     = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachines/%s/%s"
+	cannotMarshalJSONErrFmt  = "cannot Marshal to json: %s"
+	vmSubresourceURLFmt      = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachines/%s"
+	namedVmSubresourceURLFmt = vmSubresourceURLFmt + "/%s"
 )
 
 func (k *kubevirt) VirtualMachine(namespace string) VirtualMachineInterface {
@@ -77,7 +78,7 @@ func (v *vm) Get(ctx context.Context, name string, options *k8smetav1.GetOptions
 }
 
 func (v *vm) GetWithExpandedSpec(ctx context.Context, name string) (*v1.VirtualMachine, error) {
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "expand-spec")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "expand-spec")
 	newVm := &v1.VirtualMachine{}
 	err := v.restClient.Get().
 		AbsPath(uri).
@@ -143,7 +144,7 @@ func (v *vm) Restart(ctx context.Context, name string, restartOptions *v1.Restar
 	if err != nil {
 		return fmt.Errorf(cannotMarshalJSONErrFmt, err)
 	}
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "restart")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "restart")
 	return v.restClient.Put().AbsPath(uri).Body(body).Do(ctx).Error()
 }
 
@@ -152,12 +153,12 @@ func (v *vm) ForceRestart(ctx context.Context, name string, restartOptions *v1.R
 	if err != nil {
 		return fmt.Errorf(cannotMarshalJSONErrFmt, err)
 	}
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "restart")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "restart")
 	return v.restClient.Put().AbsPath(uri).Body(body).Do(ctx).Error()
 }
 
 func (v *vm) Start(ctx context.Context, name string, startOptions *v1.StartOptions) error {
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "start")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "start")
 
 	optsJson, err := json.Marshal(startOptions)
 	if err != nil {
@@ -167,7 +168,7 @@ func (v *vm) Start(ctx context.Context, name string, startOptions *v1.StartOptio
 }
 
 func (v *vm) Stop(ctx context.Context, name string, stopOptions *v1.StopOptions) error {
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "stop")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "stop")
 	optsJson, err := json.Marshal(stopOptions)
 	if err != nil {
 		return err
@@ -180,12 +181,12 @@ func (v *vm) ForceStop(ctx context.Context, name string, stopOptions *v1.StopOpt
 	if err != nil {
 		return fmt.Errorf(cannotMarshalJSONErrFmt, err)
 	}
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "stop")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "stop")
 	return v.restClient.Put().AbsPath(uri).Body(body).Do(ctx).Error()
 }
 
 func (v *vm) Migrate(ctx context.Context, name string, migrateOptions *v1.MigrateOptions) error {
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "migrate")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "migrate")
 	optsJson, err := json.Marshal(migrateOptions)
 	if err != nil {
 		return err
@@ -194,7 +195,7 @@ func (v *vm) Migrate(ctx context.Context, name string, migrateOptions *v1.Migrat
 }
 
 func (v *vm) MemoryDump(ctx context.Context, name string, memoryDumpRequest *v1.VirtualMachineMemoryDumpRequest) error {
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "memorydump")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "memorydump")
 
 	JSON, err := json.Marshal(memoryDumpRequest)
 	if err != nil {
@@ -205,13 +206,24 @@ func (v *vm) MemoryDump(ctx context.Context, name string, memoryDumpRequest *v1.
 }
 
 func (v *vm) RemoveMemoryDump(ctx context.Context, name string) error {
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "removememorydump")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "removememorydump")
 
 	return v.restClient.Put().AbsPath(uri).Do(ctx).Error()
 }
 
+func (v *vm) UpdateMachineType(ctx context.Context, updateMachineRequest *v1.UpdateMachineTypeRequest) (*v1.UpdateMachineTypeInfo, error) {
+	result := &v1.UpdateMachineTypeInfo{}
+	body, err := json.Marshal(updateMachineRequest)
+	if err != nil {
+		return result, fmt.Errorf(cannotMarshalJSONErrFmt, err)
+	}
+	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, "updatemachinetype")
+	err = v.restClient.Put().AbsPath(uri).Body(body).Do(ctx).Into(result)
+	return result, err
+}
+
 func (v *vm) AddVolume(ctx context.Context, name string, addVolumeOptions *v1.AddVolumeOptions) error {
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "addvolume")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "addvolume")
 
 	JSON, err := json.Marshal(addVolumeOptions)
 
@@ -223,7 +235,7 @@ func (v *vm) AddVolume(ctx context.Context, name string, addVolumeOptions *v1.Ad
 }
 
 func (v *vm) RemoveVolume(ctx context.Context, name string, removeVolumeOptions *v1.RemoveVolumeOptions) error {
-	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "removevolume")
+	uri := fmt.Sprintf(namedVmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "removevolume")
 
 	JSON, err := json.Marshal(removeVolumeOptions)
 

@@ -1802,6 +1802,17 @@ func (_mr *_MockVirtualMachineInterfaceRecorder) RemoveMemoryDump(arg0, arg1 int
 	return _mr.mock.ctrl.RecordCall(_mr.mock, "RemoveMemoryDump", arg0, arg1)
 }
 
+func (_m *MockVirtualMachineInterface) UpdateMachineType(ctx context.Context, updateMachineRequest *v120.UpdateMachineTypeRequest) (*v120.UpdateMachineTypeInfo, error) {
+	ret := _m.ctrl.Call(_m, "UpdateMachineType", ctx, updateMachineRequest)
+	ret0, _ := ret[0].(*v120.UpdateMachineTypeInfo)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+func (_mr *_MockVirtualMachineInterfaceRecorder) UpdateMachineType(arg0, arg1 interface{}) *gomock.Call {
+	return _mr.mock.ctrl.RecordCall(_mr.mock, "UpdateMachineType", arg0, arg1)
+}
+
 // Mock of VirtualMachineInstanceMigrationInterface interface
 type MockVirtualMachineInstanceMigrationInterface struct {
 	ctrl     *gomock.Controller

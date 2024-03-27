@@ -107,6 +107,7 @@ var _ = Describe("Cluster role and cluster role bindings", func() {
 
 				Entry(fmt.Sprintf("get %s/%s", virtv1.SubresourceGroupName, apiVMExpandSpec), virtv1.SubresourceGroupName, apiVMExpandSpec, "get"),
 				Entry(fmt.Sprintf("get %s/%s", virtv1.SubresourceGroupName, apiVMPortForward), virtv1.SubresourceGroupName, apiVMPortForward, "get"),
+				Entry(fmt.Sprintf("put %s/%s", virtv1.SubresourceGroupName, apiVMUpdateMachineType), virtv1.SubresourceGroupName, apiVMUpdateMachineType, "put"),
 
 				Entry(fmt.Sprintf("update %s/%s", virtv1.SubresourceGroupName, apiVMStart), virtv1.SubresourceGroupName, apiVMStart, "update"),
 				Entry(fmt.Sprintf("update %s/%s", virtv1.SubresourceGroupName, apiVMStop), virtv1.SubresourceGroupName, apiVMInstancesSEVInjectLaunchSecret, "update"),
@@ -172,6 +173,7 @@ var _ = Describe("Cluster role and cluster role bindings", func() {
 
 				Entry(fmt.Sprintf("get %s/%s", virtv1.SubresourceGroupName, apiVMExpandSpec), virtv1.SubresourceGroupName, apiVMExpandSpec, "get"),
 				Entry(fmt.Sprintf("get %s/%s", virtv1.SubresourceGroupName, apiVMPortForward), virtv1.SubresourceGroupName, apiVMPortForward, "get"),
+				Entry(fmt.Sprintf("put %s/%s", virtv1.SubresourceGroupName, apiVMUpdateMachineType), virtv1.SubresourceGroupName, apiVMUpdateMachineType, "put"),
 
 				Entry(fmt.Sprintf("update %s/%s", virtv1.SubresourceGroupName, apiVMStart), virtv1.SubresourceGroupName, apiVMStart, "update"),
 				Entry(fmt.Sprintf("update %s/%s", virtv1.SubresourceGroupName, apiVMStop), virtv1.SubresourceGroupName, apiVMInstancesSEVInjectLaunchSecret, "update"),

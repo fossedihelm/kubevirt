@@ -312,6 +312,7 @@ type VirtualMachineInterface interface {
 	PortForward(name string, port int, protocol string) (StreamInterface, error)
 	MemoryDump(ctx context.Context, name string, memoryDumpRequest *v1.VirtualMachineMemoryDumpRequest) error
 	RemoveMemoryDump(ctx context.Context, name string) error
+	UpdateMachineType(ctx context.Context, updateMachineRequest *v1.UpdateMachineTypeRequest) (*v1.UpdateMachineTypeInfo, error)
 }
 
 type VirtualMachineInstanceMigrationInterface interface {

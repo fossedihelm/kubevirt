@@ -364,6 +364,17 @@ func (app *virtAPIApp) composeSubresources() {
 			Operation(version.Version + "usbredir").
 			Doc("Open a websocket connection to connect to USB device on the specified VirtualMachineInstance."))
 
+		subws.Route(subws.PUT(definitions.NamespacedResourceBasePath(subresourcesvmGVR)+definitions.SubResourcePath("updatemachinetype")).
+			To(subresourceApp.UpdateMachineTypeHandler).
+			Consumes(mime.MIME_JSON).
+			Produces(mime.MIME_JSON).
+			Reads(v1.UpdateMachineTypeRequest{}).
+			Param(definitions.NamespaceParam(subws)).
+			Operation(version.Version+"UpdateMachineType").
+			Doc("Update the machine type of VirtualMachines.").
+			Returns(http.StatusOK, "OK", "").
+			Returns(http.StatusInternalServerError, httpStatusInternalServerError, ""))
+
 		// VMI endpoint
 		subws.Route(subws.GET(definitions.NamespacedResourcePath(subresourcesvmiGVR) + definitions.SubResourcePath("portforward") + definitions.PortPath).
 			To(subresourceApp.PortForwardRequestHandler(subresourceApp.FetchVirtualMachineInstance)).
@@ -637,6 +648,10 @@ func (app *virtAPIApp) composeSubresources() {
 					},
 					{
 						Name:       "virtualmachines/expand-spec",
+						Namespaced: true,
+					},
+					{
+						Name:       "virtualmachines/updatemachinetype",
 						Namespaced: true,
 					},
 					{

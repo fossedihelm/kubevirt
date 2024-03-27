@@ -2298,6 +2298,27 @@ const (
 	MemoryDumpFailed MemoryDumpPhase = "Failed"
 )
 
+// UpdateMachineTypeRequest is used to provide options to the update machine type request.
+type UpdateMachineTypeRequest struct {
+	// The glob of the matching machine type that should be updated.
+	MachineTypeGlob string `json:"machineTypeGlob,omitempty"`
+	// Specify if running vms should be immediately restarted.
+	RestartRequired bool `json:"restartRequired,omitempty"`
+	// Filter vms by the label selector.
+	LabelSelector string `json:"labelSelector,omitempty"`
+}
+
+// UpdateMachineTypeInfo is used to provide information regarding the job created by updateMachineType request.
+//
+// +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object
+type UpdateMachineTypeInfo struct {
+	metav1.TypeMeta `json:",inline"`
+	// The namespace of the created job
+	JobNamespace string `json:"jobNamespace,omitempty"`
+	// The name of the created job
+	JobName string `json:"jobName,omitempty"`
+}
+
 // AddVolumeOptions is provided when dynamically hot plugging a volume and disk
 type AddVolumeOptions struct {
 	// Name represents the name that will be used to map the

@@ -55,15 +55,16 @@ const (
 	apiVMClones           = "virtualmachineclones"
 	apiVMPools            = "virtualmachinepools"
 
-	apiVMExpandSpec   = "virtualmachines/expand-spec"
-	apiVMPortForward  = "virtualmachines/portforward"
-	apiVMStart        = "virtualmachines/start"
-	apiVMStop         = "virtualmachines/stop"
-	apiVMRestart      = "virtualmachines/restart"
-	apiVMAddVolume    = "virtualmachines/addvolume"
-	apiVMRemoveVolume = "virtualmachines/removevolume"
-	apiVMMigrate      = "virtualmachines/migrate"
-	apiVMMemoryDump   = "virtualmachines/memorydump"
+	apiVMExpandSpec        = "virtualmachines/expand-spec"
+	apiVMUpdateMachineType = "virtualmachines/updatemachinetype"
+	apiVMPortForward       = "virtualmachines/portforward"
+	apiVMStart             = "virtualmachines/start"
+	apiVMStop              = "virtualmachines/stop"
+	apiVMRestart           = "virtualmachines/restart"
+	apiVMAddVolume         = "virtualmachines/addvolume"
+	apiVMRemoveVolume      = "virtualmachines/removevolume"
+	apiVMMigrate           = "virtualmachines/migrate"
+	apiVMMemoryDump        = "virtualmachines/memorydump"
 
 	apiVMInstancesConsole                   = "virtualmachineinstances/console"
 	apiVMInstancesVNC                       = "virtualmachineinstances/vnc"
@@ -233,6 +234,17 @@ func newAdminClusterRole() *rbacv1.ClusterRole {
 				},
 				Verbs: []string{
 					"get",
+				},
+			},
+			{
+				APIGroups: []string{
+					virtv1.SubresourceGroupName,
+				},
+				Resources: []string{
+					apiVMUpdateMachineType,
+				},
+				Verbs: []string{
+					"put",
 				},
 			},
 			{
@@ -415,6 +427,17 @@ func newEditClusterRole() *rbacv1.ClusterRole {
 				},
 				Verbs: []string{
 					"get",
+				},
+			},
+			{
+				APIGroups: []string{
+					virtv1.SubresourceGroupName,
+				},
+				Resources: []string{
+					apiVMUpdateMachineType,
+				},
+				Verbs: []string{
+					"put",
 				},
 			},
 			{
