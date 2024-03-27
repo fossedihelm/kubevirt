@@ -35,6 +35,7 @@ import (
 
 	"kubevirt.io/kubevirt/pkg/virt-operator/resource/generate/components"
 	"kubevirt.io/kubevirt/pkg/virt-operator/resource/generate/rbac"
+	"kubevirt.io/kubevirt/pkg/virt-operator/util"
 )
 
 const xDescriptorText = "urn:alm:descriptor:text"
@@ -192,7 +193,7 @@ func NewClusterServiceVersion(data *NewClusterServiceVersionData) (*csvv1.Cluste
 		return nil, err
 	}
 
-	imageVersion := components.AddVersionSeparatorPrefix(data.OperatorImageVersion)
+	imageVersion := util.AddVersionSeparatorPrefix(data.OperatorImageVersion)
 
 	if data.Replicas > 0 && *deployment.Spec.Replicas != int32(data.Replicas) {
 		deployment.Spec.Replicas = pointer.Int32(int32(data.Replicas))
