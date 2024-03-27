@@ -76,6 +76,11 @@ var noAuthEndpoints = map[string]struct{}{
 	"/apis/subresources.kubevirt.io/v1alpha3/dump-cluster-profiler":  {},
 }
 
+var allowedBaseResource = map[string]struct{}{
+	"expand-vm-spec":         {},
+	"update-vm-machine-type": {},
+}
+
 type VirtApiAuthorizor interface {
 	Authorize(req *restful.Request) (bool, string, error)
 	AddUserHeaders(header []string)
@@ -182,6 +187,7 @@ func (a *authorizor) generateAccessReview(req *restful.Request) (*authv1.Subject
 	// URL examples
 	// /apis/subresources.kubevirt.io/v1alpha3/namespaces/default/virtualmachineinstances/testvmi/console
 	// /apis/subresources.kubevirt.io/v1alpha3/namespaces/default/expand-vm-spec
+	// /apis/subresources.kubevirt.io/v1alpha3/namespaces/default/update-vm-machine-type
 	pathSplit := strings.Split(req.Request.URL.Path, "/")
 	if len(pathSplit) >= namespacedResourceAttributesMinParts {
 		if err := addNamespacedResourceAttributes(pathSplit, req.Request.Method, r); err != nil {
@@ -233,12 +239,13 @@ func addNamespacedResourceAttributes(pathSplit []string, requestMethod string, r
 func addNamespacedResourceBaseAttributes(pathSplit []string, requestMethod string, r *authv1.SubjectAccessReview) error {
 	// URL example
 	// /apis/subresources.kubevirt.io/v1alpha3/namespaces/default/expand-vm-spec
+	// /apis/subresources.kubevirt.io/v1alpha3/namespaces/default/update-vm-machine-type
 	group := pathSplit[2]
 	version := pathSplit[3]
 	namespace := pathSplit[5]
 	resource := pathSplit[6]
 
-	if resource != "expand-vm-spec" {
+	if _, exists := allowedBaseResource[resource]; !exists {
 		return fmt.Errorf("unknown resource type %s", resource)
 	}
 

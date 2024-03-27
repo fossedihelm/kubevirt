@@ -91,6 +91,17 @@ func newApiServerClusterRole() *rbacv1.ClusterRole {
 			},
 			{
 				APIGroups: []string{
+					"batch",
+				},
+				Resources: []string{
+					"jobs",
+				},
+				Verbs: []string{
+					"create", "get", "list", "delete",
+				},
+			},
+			{
+				APIGroups: []string{
 					GroupName,
 				},
 				Resources: []string{

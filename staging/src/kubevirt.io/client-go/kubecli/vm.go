@@ -34,8 +34,9 @@ import (
 )
 
 const (
-	cannotMarshalJSONErrFmt = "Cannot Marshal to json: %s"
-	vmSubresourceURLFmt     = "/apis/subresources.kubevirt.io/%s/namespaces/%s/virtualmachines/%s/%s"
+	cannotMarshalJSONErrFmt    = "cannot Marshal to json: %s"
+	namespaceSubresourceURLFmt = "/apis/subresources.kubevirt.io/%s/namespaces/%s"
+	vmSubresourceURLFmt        = namespaceSubresourceURLFmt + "/virtualmachines/%s/%s"
 )
 
 func (k *kubevirt) VirtualMachine(namespace string) VirtualMachineInterface {
@@ -208,6 +209,17 @@ func (v *vm) RemoveMemoryDump(ctx context.Context, name string) error {
 	uri := fmt.Sprintf(vmSubresourceURLFmt, v1.ApiStorageVersion, v.namespace, name, "removememorydump")
 
 	return v.restClient.Put().AbsPath(uri).Do(ctx).Error()
+}
+
+func (v *vm) UpdateMachineType(ctx context.Context, updateMachineRequest *v1.UpdateMachineTypeRequest) (*v1.UpdateMachineTypeInfo, error) {
+	result := &v1.UpdateMachineTypeInfo{}
+	body, err := json.Marshal(updateMachineRequest)
+	if err != nil {
+		return result, fmt.Errorf(cannotMarshalJSONErrFmt, err)
+	}
+	uri := fmt.Sprintf(namespaceSubresourceURLFmt+"/%s", v1.ApiStorageVersion, v.namespace, "update-vm-machine-type")
+	err = v.restClient.Put().AbsPath(uri).SetHeader("Content-Type", "application/json").Body(body).Do(ctx).Into(result)
+	return result, err
 }
 
 func (v *vm) AddVolume(ctx context.Context, name string, addVolumeOptions *v1.AddVolumeOptions) error {

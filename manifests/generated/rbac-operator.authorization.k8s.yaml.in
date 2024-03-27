@@ -280,6 +280,15 @@ rules:
   - delete
   - patch
 - apiGroups:
+  - batch
+  resources:
+  - jobs
+  verbs:
+  - create
+  - get
+  - list
+  - delete
+- apiGroups:
   - kubevirt.io
   resources:
   - virtualmachines
@@ -855,6 +864,12 @@ rules:
   verbs:
   - update
 - apiGroups:
+  - subresources.kubevirt.io
+  resources:
+  - update-vm-machine-type
+  verbs:
+  - put
+- apiGroups:
   - kubevirt.io
   resources:
   - virtualmachines
@@ -984,6 +999,12 @@ rules:
   - virtualmachines/portforward
   verbs:
   - get
+- apiGroups:
+  - subresources.kubevirt.io
+  resources:
+  - update-vm-machine-type
+  verbs:
+  - put
 - apiGroups:
   - subresources.kubevirt.io
   resources:

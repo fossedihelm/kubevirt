@@ -39,21 +39,22 @@ const (
 	defaultClusterRoleName          = "kubevirt.io:default"
 	instancetypeViewClusterRoleName = "instancetype.kubevirt.io:view"
 
-	apiVersion            = "version"
-	apiGuestFs            = "guestfs"
-	apiExpandVmSpec       = "expand-vm-spec"
-	apiKubevirts          = "kubevirts"
-	apiVM                 = "virtualmachines"
-	apiVMInstances        = "virtualmachineinstances"
-	apiVMIPresets         = "virtualmachineinstancepresets"
-	apiVMIReplicasets     = "virtualmachineinstancereplicasets"
-	apiVMIMigrations      = "virtualmachineinstancemigrations"
-	apiVMSnapshots        = "virtualmachinesnapshots"
-	apiVMSnapshotContents = "virtualmachinesnapshotcontents"
-	apiVMRestores         = "virtualmachinerestores"
-	apiVMExports          = "virtualmachineexports"
-	apiVMClones           = "virtualmachineclones"
-	apiVMPools            = "virtualmachinepools"
+	apiVersion             = "version"
+	apiGuestFs             = "guestfs"
+	apiExpandVmSpec        = "expand-vm-spec"
+	apiUpdateVmMachineType = "update-vm-machine-type"
+	apiKubevirts           = "kubevirts"
+	apiVM                  = "virtualmachines"
+	apiVMInstances         = "virtualmachineinstances"
+	apiVMIPresets          = "virtualmachineinstancepresets"
+	apiVMIReplicasets      = "virtualmachineinstancereplicasets"
+	apiVMIMigrations       = "virtualmachineinstancemigrations"
+	apiVMSnapshots         = "virtualmachinesnapshots"
+	apiVMSnapshotContents  = "virtualmachinesnapshotcontents"
+	apiVMRestores          = "virtualmachinerestores"
+	apiVMExports           = "virtualmachineexports"
+	apiVMClones            = "virtualmachineclones"
+	apiVMPools             = "virtualmachinepools"
 
 	apiVMExpandSpec   = "virtualmachines/expand-spec"
 	apiVMPortForward  = "virtualmachines/portforward"
@@ -265,6 +266,17 @@ func newAdminClusterRole() *rbacv1.ClusterRole {
 			},
 			{
 				APIGroups: []string{
+					virtv1.SubresourceGroupName,
+				},
+				Resources: []string{
+					apiUpdateVmMachineType,
+				},
+				Verbs: []string{
+					"put",
+				},
+			},
+			{
+				APIGroups: []string{
 					GroupName,
 				},
 				Resources: []string{
@@ -415,6 +427,17 @@ func newEditClusterRole() *rbacv1.ClusterRole {
 				},
 				Verbs: []string{
 					"get",
+				},
+			},
+			{
+				APIGroups: []string{
+					virtv1.SubresourceGroupName,
+				},
+				Resources: []string{
+					apiUpdateVmMachineType,
+				},
+				Verbs: []string{
+					"put",
 				},
 			},
 			{

@@ -228,6 +228,7 @@ func (app *virtAPIApp) composeSubresources() {
 		subresourcesvmGVR := schema.GroupVersionResource{Group: version.Group, Version: version.Version, Resource: "virtualmachines"}
 		subresourcesvmiGVR := schema.GroupVersionResource{Group: version.Group, Version: version.Version, Resource: "virtualmachineinstances"}
 		expandvmspecGVR := schema.GroupVersionResource{Group: version.Group, Version: version.Version, Resource: "expand-vm-spec"}
+		updatevmmachinetypeGVR := schema.GroupVersionResource{Group: version.Group, Version: version.Version, Resource: "update-vm-machine-type"}
 
 		subws := new(restful.WebService)
 		subws.Doc(fmt.Sprintf("KubeVirt \"%s\" Subresource API.", version.Version))
@@ -363,7 +364,6 @@ func (app *virtAPIApp) composeSubresources() {
 			Param(definitions.NameParam(subws)).
 			Operation(version.Version + "usbredir").
 			Doc("Open a websocket connection to connect to USB device on the specified VirtualMachineInstance."))
-
 		// VMI endpoint
 		subws.Route(subws.GET(definitions.NamespacedResourcePath(subresourcesvmiGVR) + definitions.SubResourcePath("portforward") + definitions.PortPath).
 			To(subresourceApp.PortForwardRequestHandler(subresourceApp.FetchVirtualMachineInstance)).
@@ -408,6 +408,17 @@ func (app *virtAPIApp) composeSubresources() {
 			Doc("Expands instancetype and preference into the passed VirtualMachine object.").
 			Returns(http.StatusOK, "OK", "").
 			Returns(http.StatusBadRequest, httpStatusBadRequestMessage, "").
+			Returns(http.StatusInternalServerError, httpStatusInternalServerError, ""))
+
+		subws.Route(subws.PUT(definitions.NamespacedResourceBasePath(updatevmmachinetypeGVR)).
+			To(subresourceApp.UpdateMachineTypeHandler).
+			Consumes(mime.MIME_JSON).
+			Produces(mime.MIME_JSON).
+			Reads(v1.UpdateMachineTypeRequest{}).
+			Param(definitions.NamespaceParam(subws)).
+			Operation(version.Version+"UpdateMachineType").
+			Doc("Update the machine type of VirtualMachines.").
+			Returns(http.StatusOK, "OK", "").
 			Returns(http.StatusInternalServerError, httpStatusInternalServerError, ""))
 
 		subws.Route(subws.GET(definitions.SubResourcePath("version")).Produces(restful.MIME_JSON).
@@ -585,6 +596,10 @@ func (app *virtAPIApp) composeSubresources() {
 				list.APIResources = []metav1.APIResource{
 					{
 						Name:       "expand-vm-spec",
+						Namespaced: true,
+					},
+					{
+						Name:       "update-vm-machine-type",
 						Namespaced: true,
 					},
 					{

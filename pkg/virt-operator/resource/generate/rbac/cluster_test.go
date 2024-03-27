@@ -117,6 +117,7 @@ var _ = Describe("Cluster role and cluster role bindings", func() {
 				Entry(fmt.Sprintf("update %s/%s", virtv1.SubresourceGroupName, apiVMMemoryDump), virtv1.SubresourceGroupName, apiVMMemoryDump, "update"),
 
 				Entry(fmt.Sprintf("update %s/%s", virtv1.SubresourceGroupName, apiExpandVmSpec), virtv1.SubresourceGroupName, apiExpandVmSpec, "update"),
+				Entry(fmt.Sprintf("put %s/%s", virtv1.SubresourceGroupName, apiUpdateVmMachineType), virtv1.SubresourceGroupName, apiUpdateVmMachineType, "put"),
 
 				Entry(fmt.Sprintf("do all operations to %s/%s", GroupName, apiVM), GroupName, apiVM, "get", "delete", "create", "update", "patch", "list", "watch", "deletecollection"),
 				Entry(fmt.Sprintf("do all operations to %s/%s", GroupName, apiVMInstances), GroupName, apiVMInstances, "get", "delete", "create", "update", "patch", "list", "watch", "deletecollection"),
@@ -182,6 +183,7 @@ var _ = Describe("Cluster role and cluster role bindings", func() {
 				Entry(fmt.Sprintf("update %s/%s", virtv1.SubresourceGroupName, apiVMMemoryDump), virtv1.SubresourceGroupName, apiVMMemoryDump, "update"),
 
 				Entry(fmt.Sprintf("update %s/%s", virtv1.SubresourceGroupName, apiExpandVmSpec), virtv1.SubresourceGroupName, apiExpandVmSpec, "update"),
+				Entry(fmt.Sprintf("put %s/%s", virtv1.SubresourceGroupName, apiUpdateVmMachineType), virtv1.SubresourceGroupName, apiUpdateVmMachineType, "put"),
 
 				Entry(fmt.Sprintf("get, delete, create, update, patch, list, watch %s/%s", GroupName, apiVM), GroupName, apiVM, "get", "delete", "create", "update", "patch", "list", "watch"),
 				Entry(fmt.Sprintf("get, delete, create, update, patch, list, watch %s/%s", GroupName, apiVMInstances), GroupName, apiVMInstances, "get", "delete", "create", "update", "patch", "list", "watch"),

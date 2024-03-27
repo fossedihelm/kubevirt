@@ -340,6 +340,15 @@ spec:
           - delete
           - patch
         - apiGroups:
+          - batch
+          resources:
+          - jobs
+          verbs:
+          - create
+          - get
+          - list
+          - delete
+        - apiGroups:
           - kubevirt.io
           resources:
           - virtualmachines
@@ -915,6 +924,12 @@ spec:
           verbs:
           - update
         - apiGroups:
+          - subresources.kubevirt.io
+          resources:
+          - update-vm-machine-type
+          verbs:
+          - put
+        - apiGroups:
           - kubevirt.io
           resources:
           - virtualmachines
@@ -1044,6 +1059,12 @@ spec:
           - virtualmachines/portforward
           verbs:
           - get
+        - apiGroups:
+          - subresources.kubevirt.io
+          resources:
+          - update-vm-machine-type
+          verbs:
+          - put
         - apiGroups:
           - subresources.kubevirt.io
           resources:

@@ -675,6 +675,23 @@ func (VirtualMachineMemoryDumpRequest) SwaggerDoc() map[string]string {
 	}
 }
 
+func (UpdateMachineTypeRequest) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"":                "UpdateMachineTypeRequest is used to provide options to the update machine type request.",
+		"machineTypeGlob": "The glob of the matching machine type that should be updated.",
+		"restartRequired": "Specify if running vms should be immediately restarted.",
+		"labelSelector":   "Filter vms by the label selector.",
+	}
+}
+
+func (UpdateMachineTypeInfo) SwaggerDoc() map[string]string {
+	return map[string]string{
+		"":             "UpdateMachineTypeInfo is used to provide information regarding the job created by updateMachineType request.\n\n+k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object",
+		"jobNamespace": "The namespace of the created job",
+		"jobName":      "The name of the created job",
+	}
+}
+
 func (AddVolumeOptions) SwaggerDoc() map[string]string {
 	return map[string]string{
 		"":             "AddVolumeOptions is provided when dynamically hot plugging a volume and disk",

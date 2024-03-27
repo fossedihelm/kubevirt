@@ -491,6 +491,8 @@ func GetOpenAPIDefinitions(ref common.ReferenceCallback) map[string]common.OpenA
 		"kubevirt.io/api/core/v1.USBHostDevice":                                                      schema_kubevirtio_api_core_v1_USBHostDevice(ref),
 		"kubevirt.io/api/core/v1.USBSelector":                                                        schema_kubevirtio_api_core_v1_USBSelector(ref),
 		"kubevirt.io/api/core/v1.UnpauseOptions":                                                     schema_kubevirtio_api_core_v1_UnpauseOptions(ref),
+		"kubevirt.io/api/core/v1.UpdateMachineTypeInfo":                                              schema_kubevirtio_api_core_v1_UpdateMachineTypeInfo(ref),
+		"kubevirt.io/api/core/v1.UpdateMachineTypeRequest":                                           schema_kubevirtio_api_core_v1_UpdateMachineTypeRequest(ref),
 		"kubevirt.io/api/core/v1.UserPasswordAccessCredential":                                       schema_kubevirtio_api_core_v1_UserPasswordAccessCredential(ref),
 		"kubevirt.io/api/core/v1.UserPasswordAccessCredentialPropagationMethod":                      schema_kubevirtio_api_core_v1_UserPasswordAccessCredentialPropagationMethod(ref),
 		"kubevirt.io/api/core/v1.UserPasswordAccessCredentialSource":                                 schema_kubevirtio_api_core_v1_UserPasswordAccessCredentialSource(ref),
@@ -22442,6 +22444,81 @@ func schema_kubevirtio_api_core_v1_UnpauseOptions(ref common.ReferenceCallback) 
 									},
 								},
 							},
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_kubevirtio_api_core_v1_UpdateMachineTypeInfo(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "UpdateMachineTypeInfo is used to provide information regarding the job created by updateMachineType request.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"kind": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Kind is a string value representing the REST resource this object represents. Servers may infer this from the endpoint the client submits requests to. Cannot be updated. In CamelCase. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"apiVersion": {
+						SchemaProps: spec.SchemaProps{
+							Description: "APIVersion defines the versioned schema of this representation of an object. Servers should convert recognized schemas to the latest internal value, and may reject unrecognized values. More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"jobNamespace": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The namespace of the created job",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"jobName": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The name of the created job",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+				},
+			},
+		},
+	}
+}
+
+func schema_kubevirtio_api_core_v1_UpdateMachineTypeRequest(ref common.ReferenceCallback) common.OpenAPIDefinition {
+	return common.OpenAPIDefinition{
+		Schema: spec.Schema{
+			SchemaProps: spec.SchemaProps{
+				Description: "UpdateMachineTypeRequest is used to provide options to the update machine type request.",
+				Type:        []string{"object"},
+				Properties: map[string]spec.Schema{
+					"machineTypeGlob": {
+						SchemaProps: spec.SchemaProps{
+							Description: "The glob of the matching machine type that should be updated.",
+							Type:        []string{"string"},
+							Format:      "",
+						},
+					},
+					"restartRequired": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Specify if running vms should be immediately restarted.",
+							Type:        []string{"boolean"},
+							Format:      "",
+						},
+					},
+					"labelSelector": {
+						SchemaProps: spec.SchemaProps{
+							Description: "Filter vms by the label selector.",
+							Type:        []string{"string"},
+							Format:      "",
 						},
 					},
 				},
