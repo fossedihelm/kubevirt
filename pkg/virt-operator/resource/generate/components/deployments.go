@@ -22,7 +22,6 @@ package components
 import (
 	"fmt"
 	"path"
-	"strings"
 
 	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/utils/pointer"
@@ -153,7 +152,7 @@ func NewExportProxyService(namespace string) *corev1.Service {
 func newPodTemplateSpec(podName, imageName, repository, version, productName, productVersion, productComponent, image string, pullPolicy corev1.PullPolicy, imagePullSecrets []corev1.LocalObjectReference, podAffinity *corev1.Affinity, envVars *[]corev1.EnvVar) (*corev1.PodTemplateSpec, error) {
 
 	if image == "" {
-		image = fmt.Sprintf("%s/%s%s", repository, imageName, AddVersionSeparatorPrefix(version))
+		image = fmt.Sprintf("%s/%s%s", repository, imageName, operatorutil.AddVersionSeparatorPrefix(version))
 	}
 
 	podTemplateSpec := &corev1.PodTemplateSpec{
@@ -398,10 +397,10 @@ func NewControllerDeployment(namespace, repository, imagePrefix, controllerVersi
 	}
 
 	if launcherImage == "" {
-		launcherImage = fmt.Sprintf("%s/%s%s%s", repository, imagePrefix, "virt-launcher", AddVersionSeparatorPrefix(launcherVersion))
+		launcherImage = fmt.Sprintf("%s/%s%s%s", repository, imagePrefix, "virt-launcher", operatorutil.AddVersionSeparatorPrefix(launcherVersion))
 	}
 	if exporterImage == "" {
-		exporterImage = fmt.Sprintf("%s/%s%s%s", repository, imagePrefix, "virt-exportserver", AddVersionSeparatorPrefix(exportServerVersion))
+		exporterImage = fmt.Sprintf("%s/%s%s%s", repository, imagePrefix, "virt-exportserver", operatorutil.AddVersionSeparatorPrefix(exportServerVersion))
 	}
 
 	pod := &deployment.Spec.Template.Spec
@@ -483,7 +482,7 @@ func NewControllerDeployment(namespace, repository, imagePrefix, controllerVersi
 	}
 
 	if sidecarImage == "" {
-		sidecarImage = fmt.Sprintf("%s/%s%s%s", repository, imagePrefix, "sidecar-shim", AddVersionSeparatorPrefix(sidecarVersion))
+		sidecarImage = fmt.Sprintf("%s/%s%s%s", repository, imagePrefix, "sidecar-shim", operatorutil.AddVersionSeparatorPrefix(sidecarVersion))
 	}
 	container.Env = append(container.Env, corev1.EnvVar{Name: operatorutil.SidecarShimImageEnvName, Value: sidecarImage})
 
@@ -497,7 +496,7 @@ func NewOperatorDeployment(namespace, repository, imagePrefix, version, verbosit
 
 	const kubernetesOSLinux = "linux"
 	podAntiAffinity := newPodAntiAffinity(kubevirtLabelKey, corev1.LabelHostname, metav1.LabelSelectorOpIn, []string{VirtOperatorName})
-	version = AddVersionSeparatorPrefix(version)
+	version = operatorutil.AddVersionSeparatorPrefix(version)
 	if image == "" {
 		image = fmt.Sprintf("%s/%s%s%s", repository, imagePrefix, VirtOperatorName, version)
 	}
@@ -710,18 +709,6 @@ func criticalAddonsToleration() []corev1.Toleration {
 			Operator: corev1.TolerationOpExists,
 		},
 	}
-}
-
-func AddVersionSeparatorPrefix(version string) string {
-	// version can be a template, a tag or shasum
-	// prefix tags with ":" and shasums with "@"
-	// templates have to deal with the correct image/version separator themselves
-	if strings.HasPrefix(version, "sha256:") {
-		version = fmt.Sprintf("@%s", version)
-	} else if !strings.HasPrefix(version, "{{if") {
-		version = fmt.Sprintf(":%s", version)
-	}
-	return version
 }
 
 func NewPodDisruptionBudgetForDeployment(deployment *appsv1.Deployment) *policyv1.PodDisruptionBudget {

@@ -565,7 +565,7 @@ var _ = Describe("[Serial][sig-operator]Operator", Serial, decorators.SigOperato
 					// keep old version
 					version = &oldVersion
 				} else {
-					newVersion := components.AddVersionSeparatorPrefix(*version)
+					newVersion := util.AddVersionSeparatorPrefix(*version)
 					version = &newVersion
 				}
 				newImage := fmt.Sprintf("%s/%s%s", registry, *newImageName, *version)

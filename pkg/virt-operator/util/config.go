@@ -43,18 +43,19 @@ import (
 const (
 	// Name of env var containing the operator's image name
 	// Deprecated. Use VirtOperatorImageEnvName instead
-	OldOperatorImageEnvName      = "OPERATOR_IMAGE"
-	VirtOperatorImageEnvName     = "VIRT_OPERATOR_IMAGE"
-	VirtApiImageEnvName          = "VIRT_API_IMAGE"
-	VirtControllerImageEnvName   = "VIRT_CONTROLLER_IMAGE"
-	VirtHandlerImageEnvName      = "VIRT_HANDLER_IMAGE"
-	VirtLauncherImageEnvName     = "VIRT_LAUNCHER_IMAGE"
-	VirtExportProxyImageEnvName  = "VIRT_EXPORTPROXY_IMAGE"
-	VirtExportServerImageEnvName = "VIRT_EXPORTSERVER_IMAGE"
-	GsImageEnvName               = "GS_IMAGE"
-	PrHelperImageEnvName         = "PR_HELPER_IMAGE"
-	SidecarShimImageEnvName      = "SIDECAR_SHIM_IMAGE"
-	RunbookURLTemplate           = "RUNBOOK_URL_TEMPLATE"
+	OldOperatorImageEnvName        = "OPERATOR_IMAGE"
+	VirtOperatorImageEnvName       = "VIRT_OPERATOR_IMAGE"
+	VirtApiImageEnvName            = "VIRT_API_IMAGE"
+	VirtControllerImageEnvName     = "VIRT_CONTROLLER_IMAGE"
+	VirtHandlerImageEnvName        = "VIRT_HANDLER_IMAGE"
+	VirtLauncherImageEnvName       = "VIRT_LAUNCHER_IMAGE"
+	VirtExportProxyImageEnvName    = "VIRT_EXPORTPROXY_IMAGE"
+	VirtExportServerImageEnvName   = "VIRT_EXPORTSERVER_IMAGE"
+	GsImageEnvName                 = "GS_IMAGE"
+	PrHelperImageEnvName           = "PR_HELPER_IMAGE"
+	SidecarShimImageEnvName        = "SIDECAR_SHIM_IMAGE"
+	MachineTypeUpdaterImageEnvName = "MACHINE_TYPE_UPDATER_IMAGE"
+	RunbookURLTemplate             = "RUNBOOK_URL_TEMPLATE"
 
 	// The below Shasum variables would be ignored if Image env vars are being used.
 	// Deprecated, use VirtApiImageEnvName instead
@@ -74,7 +75,8 @@ const (
 	// Deprecated, use PrHelperImageEnvName instead
 	PrHelperShasumEnvName    = "PR_HELPER_SHASUM"
 	SidecarShimShasumEnvName = "SIDECAR_SHIM_SHASUM"
-	KubeVirtVersionEnvName   = "KUBEVIRT_VERSION"
+	// Deprecated, use MachineTypeUpdaterImageEnvName instead
+	KubeVirtVersionEnvName = "KUBEVIRT_VERSION"
 	// Deprecated, use TargetDeploymentConfig instead
 	TargetInstallNamespace = "TARGET_INSTALL_NAMESPACE"
 	// Deprecated, use TargetDeploymentConfig instead
@@ -137,16 +139,17 @@ type KubeVirtDeploymentConfig struct {
 	KubeVirtVersion string `json:"kubeVirtVersion,omitempty" optional:"true"`
 
 	// the images names of every image we use
-	VirtOperatorImage     string `json:"virtOperatorImage,omitempty" optional:"true"`
-	VirtApiImage          string `json:"virtApiImage,omitempty" optional:"true"`
-	VirtControllerImage   string `json:"virtControllerImage,omitempty" optional:"true"`
-	VirtHandlerImage      string `json:"virtHandlerImage,omitempty" optional:"true"`
-	VirtLauncherImage     string `json:"virtLauncherImage,omitempty" optional:"true"`
-	VirtExportProxyImage  string `json:"virtExportProxyImage,omitempty" optional:"true"`
-	VirtExportServerImage string `json:"virtExportServerImage,omitempty" optional:"true"`
-	GsImage               string `json:"GsImage,omitempty" optional:"true"`
-	PrHelperImage         string `json:"PrHelperImage,omitempty" optional:"true"`
-	SidecarShimImage      string `json:"SidecarShimImage,omitempty" optional:"true"`
+	VirtOperatorImage       string `json:"virtOperatorImage,omitempty" optional:"true"`
+	VirtApiImage            string `json:"virtApiImage,omitempty" optional:"true"`
+	VirtControllerImage     string `json:"virtControllerImage,omitempty" optional:"true"`
+	VirtHandlerImage        string `json:"virtHandlerImage,omitempty" optional:"true"`
+	VirtLauncherImage       string `json:"virtLauncherImage,omitempty" optional:"true"`
+	VirtExportProxyImage    string `json:"virtExportProxyImage,omitempty" optional:"true"`
+	VirtExportServerImage   string `json:"virtExportServerImage,omitempty" optional:"true"`
+	GsImage                 string `json:"GsImage,omitempty" optional:"true"`
+	PrHelperImage           string `json:"PrHelperImage,omitempty" optional:"true"`
+	SidecarShimImage        string `json:"SidecarShimImage,omitempty" optional:"true"`
+	MachineTypeUpdaterImage string `json:"machineTypeUpdaterImage,omitempty" optional:"true"`
 
 	// the shasums of every image we use
 	VirtOperatorSha     string `json:"virtOperatorSha,omitempty" optional:"true"`
@@ -341,11 +344,25 @@ func getConfig(registry, tag, namespace string, additionalProperties map[string]
 	launcherImage := envVarManager.Getenv(VirtLauncherImageEnvName)
 	exportProxyImage := envVarManager.Getenv(VirtExportProxyImageEnvName)
 	exportServerImage := envVarManager.Getenv(VirtExportServerImageEnvName)
-	GsImage := envVarManager.Getenv(GsImageEnvName)
-	PrHelperImage := envVarManager.Getenv(PrHelperImageEnvName)
-	SidecarShimImage := envVarManager.Getenv(SidecarShimImageEnvName)
+	gsImage := envVarManager.Getenv(GsImageEnvName)
+	prHelperImage := envVarManager.Getenv(PrHelperImageEnvName)
+	sidecarShimImage := envVarManager.Getenv(SidecarShimImageEnvName)
+	machineTypeUpdaterImage := envVarManager.Getenv(MachineTypeUpdaterImageEnvName)
 
-	config := newDeploymentConfigWithTag(registry, imagePrefix, tag, namespace, operatorImage, apiImage, controllerImage, handlerImage, launcherImage, exportProxyImage, exportServerImage, GsImage, PrHelperImage, SidecarShimImage, additionalProperties, passthroughEnv)
+	deploy := deploymentImages{
+		operatorImageKey:           operatorImage,
+		apiImageKey:                apiImage,
+		controllerImageKey:         controllerImage,
+		handlerImageKey:            handlerImage,
+		launcherImageKey:           launcherImage,
+		exportProxyImageKey:        exportProxyImage,
+		exportServerImageKey:       exportServerImage,
+		gsImageKey:                 gsImage,
+		prHelperImageKey:           prHelperImage,
+		sidecarShimImageKey:        sidecarShimImage,
+		machineTypeUpdaterImageKey: machineTypeUpdaterImage,
+	}
+	config := newDeploymentConfigWithTag(registry, imagePrefix, tag, namespace, deploy, additionalProperties, passthroughEnv)
 	if skipShasums {
 		return config
 	}
@@ -398,24 +415,43 @@ func GetPassthroughEnvWithEnvVarManager(envVarManager util.EnvVarManager) map[st
 	return passthroughEnv
 }
 
-func newDeploymentConfigWithTag(registry, imagePrefix, tag, namespace, operatorImage, apiImage, controllerImage, handlerImage, launcherImage, exportProxyImage, exportServerImage, gsImage, prHelperImage, sidecarShimImage string, kvSpec, passthroughEnv map[string]string) *KubeVirtDeploymentConfig {
+type imageKey string
+
+const (
+	operatorImageKey           imageKey = "operator"
+	apiImageKey                imageKey = "api"
+	controllerImageKey         imageKey = "controller"
+	handlerImageKey            imageKey = "handler"
+	launcherImageKey           imageKey = "launcher"
+	exportProxyImageKey        imageKey = "exportProxy"
+	exportServerImageKey       imageKey = "exportServer"
+	gsImageKey                 imageKey = "gs"
+	prHelperImageKey           imageKey = "prHelper"
+	sidecarShimImageKey        imageKey = "sidecarShim"
+	machineTypeUpdaterImageKey imageKey = "machineTypeUpdater"
+)
+
+type deploymentImages map[imageKey]string
+
+func newDeploymentConfigWithTag(registry, imagePrefix, tag, namespace string, images deploymentImages, kvSpec, passthroughEnv map[string]string) *KubeVirtDeploymentConfig {
 	c := &KubeVirtDeploymentConfig{
-		Registry:              registry,
-		ImagePrefix:           imagePrefix,
-		KubeVirtVersion:       tag,
-		VirtOperatorImage:     operatorImage,
-		VirtApiImage:          apiImage,
-		VirtControllerImage:   controllerImage,
-		VirtHandlerImage:      handlerImage,
-		VirtLauncherImage:     launcherImage,
-		VirtExportProxyImage:  exportProxyImage,
-		VirtExportServerImage: exportServerImage,
-		GsImage:               gsImage,
-		PrHelperImage:         prHelperImage,
-		SidecarShimImage:      sidecarShimImage,
-		Namespace:             namespace,
-		AdditionalProperties:  kvSpec,
-		PassthroughEnvVars:    passthroughEnv,
+		Registry:                registry,
+		ImagePrefix:             imagePrefix,
+		KubeVirtVersion:         tag,
+		VirtOperatorImage:       images[operatorImageKey],
+		VirtApiImage:            images[apiImageKey],
+		VirtControllerImage:     images[controllerImageKey],
+		VirtHandlerImage:        images[handlerImageKey],
+		VirtLauncherImage:       images[launcherImageKey],
+		VirtExportProxyImage:    images[exportProxyImageKey],
+		VirtExportServerImage:   images[exportServerImageKey],
+		GsImage:                 images[gsImageKey],
+		PrHelperImage:           images[prHelperImageKey],
+		SidecarShimImage:        images[sidecarShimImageKey],
+		MachineTypeUpdaterImage: images[machineTypeUpdaterImageKey],
+		Namespace:               namespace,
+		AdditionalProperties:    kvSpec,
+		PassthroughEnvVars:      passthroughEnv,
 	}
 	c.generateInstallStrategyID()
 	return c
@@ -540,6 +576,14 @@ func (c *KubeVirtDeploymentConfig) GetSidecarShimVersion() string {
 		return c.SidecarShimSha
 	}
 	return c.KubeVirtVersion
+}
+
+func (c *KubeVirtDeploymentConfig) GetMachineTypeUpdaterImage() string {
+	if c.MachineTypeUpdaterImage != "" {
+		return c.MachineTypeUpdaterImage
+	}
+
+	return fmt.Sprintf("%s/%s%s%s", c.GetImageRegistry(), c.GetImagePrefix(), "machine-type-updater", AddVersionSeparatorPrefix(c.KubeVirtVersion))
 }
 
 func (c *KubeVirtDeploymentConfig) GetKubeVirtVersion() string {
@@ -772,4 +816,16 @@ func DigestFromImageName(name string) (digest string) {
 	}
 
 	return
+}
+
+func AddVersionSeparatorPrefix(version string) string {
+	// version can be a template, a tag or shasum
+	// prefix tags with ":" and shasums with "@"
+	// templates have to deal with the correct image/version separator themselves
+	if strings.HasPrefix(version, "sha256:") {
+		version = fmt.Sprintf("@%s", version)
+	} else if !strings.HasPrefix(version, "{{if") {
+		version = fmt.Sprintf(":%s", version)
+	}
+	return version
 }
