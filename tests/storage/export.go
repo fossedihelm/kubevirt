@@ -1373,8 +1373,7 @@ var _ = SIGDescribe("Export", func() {
 			libdv.WithPVC(libdv.PVCWithStorageClass(sc), libdv.PVCWithVolumeSize(cd.BlankVolumeSize)),
 		)
 
-		vm := newVMWithDataVolumeForExport(sc)
-		libstorage.AddDataVolumeTemplate(vm, blankDv)
+		vm := newVMWithDataVolumeForExport(sc, blankDv)
 		addDataVolumeDisk(vm, "blankdisk", blankDv.Name)
 		if libstorage.IsStorageClassBindingModeWaitForFirstConsumer(sc) {
 			// In WFFC need to start the VM in order for the
@@ -2180,8 +2179,7 @@ var _ = SIGDescribe("Export", func() {
 				libdv.WithPVC(libdv.PVCWithStorageClass(sc), libdv.PVCWithVolumeSize(cd.BlankVolumeSize)),
 			)
 
-			vm := newVMWithDataVolumeForExport(sc)
-			libstorage.AddDataVolumeTemplate(vm, blankDv)
+			vm := newVMWithDataVolumeForExport(sc, blankDv)
 			addDataVolumeDisk(vm, "blankdisk", blankDv.Name)
 			if libstorage.IsStorageClassBindingModeWaitForFirstConsumer(sc) {
 				// In WFFC need to start the VM in order for the
@@ -2332,8 +2330,7 @@ var _ = SIGDescribe("Export", func() {
 					libdv.WithBlankImageSource(),
 					libdv.WithPVC(libdv.PVCWithStorageClass(sc), libdv.PVCWithVolumeSize(cd.BlankVolumeSize)),
 				)
-				vm := newVMWithDataVolumeForExport(sc)
-				libstorage.AddDataVolumeTemplate(vm, blankDv)
+				vm := newVMWithDataVolumeForExport(sc, blankDv)
 				addDataVolumeDisk(vm, "blankdisk", blankDv.Name)
 				if libstorage.IsStorageClassBindingModeWaitForFirstConsumer(sc) {
 					// In WFFC need to start the VM in order for the
@@ -2675,7 +2672,7 @@ func (matcher *ConditionNoTimeMatcher) NegatedFailureMessage(actual interface{})
 	return format.Message(actual, "not to match without time", matcher.Cond)
 }
 
-func newVMWithDataVolumeForExport(storageClass string) *virtv1.VirtualMachine {
+func newVMWithDataVolumeForExport(storageClass string, additionalDVs ...*cdiv1.DataVolume) *virtv1.VirtualMachine {
 	dv := libdv.NewDataVolume(
 		libdv.WithRegistryURLSource(cd.DataVolumeImportUrlForContainerDisk(cd.ContainerDiskCirros)),
 		libdv.WithPVC(
@@ -2683,6 +2680,12 @@ func newVMWithDataVolumeForExport(storageClass string) *virtv1.VirtualMachine {
 			libdv.PVCWithVolumeSize(cd.CirrosVolumeSize),
 		),
 	)
+	vmOptions := []libvmi.VMOption{
+		libvmi.WithDataVolumeTemplate(dv),
+	}
+	for _, additionalDV := range additionalDVs {
+		vmOptions = append(vmOptions, libvmi.WithDataVolumeTemplate(additionalDV))
+	}
 	vm := libvmi.NewVirtualMachine(
 		libvmi.New(
 			libvmi.WithDataVolume("disk0", dv.Name),
@@ -2692,7 +2695,7 @@ func newVMWithDataVolumeForExport(storageClass string) *virtv1.VirtualMachine {
 			libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
 			libvmi.WithNetwork(virtv1.DefaultPodNetwork()),
 		),
-		libvmi.WithDataVolumeTemplate(dv),
+		vmOptions...,
 	)
 
 	return vm

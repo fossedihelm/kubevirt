@@ -290,10 +290,7 @@ func NewRandomVMWithDataVolumeWithRegistryImport(imageUrl, namespace, storageCla
 		libvmi.WithResourceMemory("1Gi"),
 		libvmi.WithNamespace(testsuite.GetTestNamespace(nil)),
 	)
-	vm := libvmi.NewVirtualMachine(vmi)
-
-	libstorage.AddDataVolumeTemplate(vm, dataVolume)
-	return vm
+	return libvmi.NewVirtualMachine(vmi, libvmi.WithDataVolumeTemplate(dataVolume))
 }
 
 // NewRandomVMIWithEphemeralDisk

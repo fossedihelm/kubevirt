@@ -43,15 +43,6 @@ import (
 	"kubevirt.io/kubevirt/tests/util"
 )
 
-func AddDataVolumeTemplate(vm *v13.VirtualMachine, dataVolume *v1beta1.DataVolume) {
-	dvt := &v13.DataVolumeTemplateSpec{}
-
-	dvt.Spec = *dataVolume.Spec.DeepCopy()
-	dvt.ObjectMeta = *dataVolume.ObjectMeta.DeepCopy()
-
-	vm.Spec.DataVolumeTemplates = append(vm.Spec.DataVolumeTemplates, *dvt)
-}
-
 func AddDataVolume(vm *v13.VirtualMachine, diskName string, dataVolume *v1beta1.DataVolume) {
 	vm.Spec.Template.Spec.Domain.Devices.Disks = append(vm.Spec.Template.Spec.Domain.Devices.Disks, v13.Disk{
 		Name: diskName,
