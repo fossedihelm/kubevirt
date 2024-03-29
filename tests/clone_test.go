@@ -6,23 +6,12 @@ import (
 	"strings"
 	"time"
 
-	"k8s.io/apimachinery/pkg/api/errors"
-
-	"kubevirt.io/kubevirt/pkg/libvmi"
-
-	"kubevirt.io/kubevirt/tests/decorators"
-	"kubevirt.io/kubevirt/tests/testsuite"
-
-	"kubevirt.io/kubevirt/tests/framework/kubevirt"
-
-	virtsnapshot "kubevirt.io/api/snapshot"
-	"kubevirt.io/api/snapshot/v1alpha1"
-
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
 	"github.com/onsi/gomega/format"
 
 	k8sv1 "k8s.io/api/core/v1"
+	"k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/pointer"
@@ -30,15 +19,24 @@ import (
 	clonev1alpha1 "kubevirt.io/api/clone/v1alpha1"
 	virtv1 "kubevirt.io/api/core/v1"
 	instancetypev1beta1 "kubevirt.io/api/instancetype/v1beta1"
+	virtsnapshot "kubevirt.io/api/snapshot"
+	"kubevirt.io/api/snapshot/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
+
+	"kubevirt.io/kubevirt/pkg/libvmi"
 	"kubevirt.io/kubevirt/tests/console"
 	cd "kubevirt.io/kubevirt/tests/containerdisk"
+	"kubevirt.io/kubevirt/tests/decorators"
+	"kubevirt.io/kubevirt/tests/framework/kubevirt"
 	. "kubevirt.io/kubevirt/tests/framework/matcher"
+	"kubevirt.io/kubevirt/tests/libdv"
 	"kubevirt.io/kubevirt/tests/libinstancetype"
 	"kubevirt.io/kubevirt/tests/libstorage"
 	"kubevirt.io/kubevirt/tests/libvmifact"
+	"kubevirt.io/kubevirt/tests/testsuite"
 )
 
 const (
@@ -527,14 +525,27 @@ var _ = Describe("[Serial]VirtualMachineClone Tests", Serial, func() {
 			}
 
 			createVMWithStorageClass := func(storageClass string, running bool) *virtv1.VirtualMachine {
-				vm := NewRandomVMWithDataVolumeWithRegistryImport(
-					cd.DataVolumeImportUrlForContainerDisk(cd.ContainerDiskAlpine),
-					testsuite.GetTestNamespace(nil),
-					storageClass,
-					k8sv1.ReadWriteOnce,
+				containerDisk := cd.DataVolumeImportUrlForContainerDisk(cd.ContainerDiskAlpine)
+				dataVolume := libdv.NewDataVolume(
+					libdv.WithRegistryURLSourceAndPullMethod(containerDisk, cdiv1.RegistryPullNode),
+					libdv.WithPVC(
+						libdv.PVCWithStorageClass(storageClass),
+						libdv.PVCWithVolumeSize(cd.ContainerDiskSizeBySourceURL(containerDisk)),
+						libdv.PVCWithAccessMode(k8sv1.ReadWriteOnce),
+					),
 				)
-				vm.Spec.Running = pointer.Bool(running)
+				vm := libvmi.NewVirtualMachine(
+					libvmi.New(
+						libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
+						libvmi.WithNetwork(virtv1.DefaultPodNetwork()),
+						libvmi.WithDataVolume("disk0", dataVolume.Name),
+						libvmi.WithResourceMemory("1Gi"),
+						libvmi.WithNamespace(testsuite.GetTestNamespace(nil)),
+					),
+					libvmi.WithDataVolumeTemplate(dataVolume),
+				)
 
+				vm.Spec.Running = pointer.Bool(running)
 				vm, err := virtClient.VirtualMachine(vm.Namespace).Create(context.Background(), vm)
 				Expect(err).ToNot(HaveOccurred())
 
@@ -668,14 +679,25 @@ var _ = Describe("[Serial]VirtualMachineClone Tests", Serial, func() {
 						preference, err := virtClient.VirtualMachinePreference(ns).Create(context.Background(), preference, v1.CreateOptions{})
 						Expect(err).ToNot(HaveOccurred())
 
-						sourceVM = NewRandomVMWithDataVolumeWithRegistryImport(
-							cd.DataVolumeImportUrlForContainerDisk(cd.ContainerDiskAlpine),
-							ns,
-							snapshotStorageClass,
-							k8sv1.ReadWriteOnce,
+						containerDisk := cd.DataVolumeImportUrlForContainerDisk(cd.ContainerDiskAlpine)
+						dataVolume := libdv.NewDataVolume(
+							libdv.WithRegistryURLSourceAndPullMethod(containerDisk, cdiv1.RegistryPullNode),
+							libdv.WithPVC(
+								libdv.PVCWithStorageClass(snapshotStorageClass),
+								libdv.PVCWithVolumeSize(cd.ContainerDiskSizeBySourceURL(containerDisk)),
+								libdv.PVCWithAccessMode(k8sv1.ReadWriteOnce),
+							),
+						)
+						sourceVM = libvmi.NewVirtualMachine(
+							libvmi.New(
+								libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
+								libvmi.WithNetwork(virtv1.DefaultPodNetwork()),
+								libvmi.WithDataVolume("disk0", dataVolume.Name),
+								libvmi.WithNamespace(testsuite.GetTestNamespace(nil)),
+							),
+							libvmi.WithDataVolumeTemplate(dataVolume),
 						)
 
-						sourceVM.Spec.Template.Spec.Domain.Resources = virtv1.ResourceRequirements{}
 						sourceVM.Spec.Instancetype = &virtv1.InstancetypeMatcher{
 							Name: instancetype.Name,
 							Kind: "VirtualMachineInstanceType",

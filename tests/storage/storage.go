@@ -1451,3 +1451,26 @@ func deletePvAndPvc(name string) {
 		util.PanicOnError(err)
 	}
 }
+
+// newRandomVMWithDataVolumeWithRegistryImport
+//
+// Deprecated: Use libvmi directly
+func newRandomVMWithDataVolumeWithRegistryImport(imageUrl, storageClass string) *v1.VirtualMachine {
+	dataVolume := libdv.NewDataVolume(
+		libdv.WithRegistryURLSourceAndPullMethod(imageUrl, cdiv1.RegistryPullNode),
+		libdv.WithPVC(
+			libdv.PVCWithStorageClass(storageClass),
+			libdv.PVCWithVolumeSize(cd.ContainerDiskSizeBySourceURL(imageUrl)),
+			libdv.PVCWithAccessMode(k8sv1.ReadWriteOnce),
+		),
+	)
+
+	vmi := libvmi.New(
+		libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
+		libvmi.WithNetwork(v1.DefaultPodNetwork()),
+		libvmi.WithDataVolume("disk0", dataVolume.Name),
+		libvmi.WithResourceMemory("1Gi"),
+		libvmi.WithNamespace(testsuite.GetTestNamespace(nil)),
+	)
+	return libvmi.NewVirtualMachine(vmi, libvmi.WithDataVolumeTemplate(dataVolume))
+}
