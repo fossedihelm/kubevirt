@@ -31,6 +31,8 @@ import (
 	"sort"
 	"strings"
 
+	"kubevirt.io/client-go/kubecli"
+
 	k8sv1 "k8s.io/api/core/v1"
 
 	v1 "kubevirt.io/api/core/v1"
@@ -200,11 +202,11 @@ func GetConfigFromEnvWithEnvVarManager(envVarManager EnvVarManager) (*KubeVirtDe
 	return getConfig("", "", ns, additionalProperties, envVarManager), nil
 }
 
-func GetTargetConfigFromKV(kv *v1.KubeVirt) *KubeVirtDeploymentConfig {
-	return GetTargetConfigFromKVWithEnvVarManager(kv, DefaultEnvVarManager)
+func GetTargetConfigFromKV(kv *v1.KubeVirt, clientset kubecli.KubevirtClient) *KubeVirtDeploymentConfig {
+	return GetTargetConfigFromKVWithEnvVarManager(kv, DefaultEnvVarManager, clientset)
 }
 
-func GetTargetConfigFromKVWithEnvVarManager(kv *v1.KubeVirt, envVarManager EnvVarManager) *KubeVirtDeploymentConfig {
+func GetTargetConfigFromKVWithEnvVarManager(kv *v1.KubeVirt, envVarManager EnvVarManager, clientset kubecli.KubevirtClient) *KubeVirtDeploymentConfig {
 	additionalProperties := getKVMapFromSpec(kv.Spec)
 	if kv.Spec.Configuration.MigrationConfiguration != nil &&
 		kv.Spec.Configuration.MigrationConfiguration.Network != nil {
@@ -217,6 +219,7 @@ func GetTargetConfigFromKVWithEnvVarManager(kv *v1.KubeVirt, envVarManager EnvVa
 			}
 		}
 	}
+
 	// don't use status.target* here, as that is always set, but we need to know if it was set by the spec and with that
 	// overriding shasums from env vars
 	return getConfig(kv.Spec.ImageRegistry,
