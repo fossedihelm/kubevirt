@@ -103,14 +103,12 @@ func (r *Reconciler) syncDeployment(origDeployment *appsv1.Deployment) (*appsv1.
 		return nil, err
 	}
 
-	if existingCopy.ObjectMeta.Annotations != nil {
-		revisionAnnotation := "deployment.kubernetes.io/revision"
-		if val, ok := existingCopy.ObjectMeta.Annotations[revisionAnnotation]; ok {
-			if deployment.ObjectMeta.Annotations == nil {
-				deployment.ObjectMeta.Annotations = map[string]string{}
-			}
-			deployment.ObjectMeta.Annotations[revisionAnnotation] = val
+	revisionAnnotation := "deployment.kubernetes.io/revision"
+	if val, ok := existingCopy.ObjectMeta.Annotations[revisionAnnotation]; ok {
+		if deployment.ObjectMeta.Annotations == nil {
+			deployment.ObjectMeta.Annotations = map[string]string{}
 		}
+		deployment.ObjectMeta.Annotations[revisionAnnotation] = val
 	}
 
 	ops, err := getPatchWithObjectMetaAndSpec([]string{

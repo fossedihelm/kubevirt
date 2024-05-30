@@ -20,11 +20,10 @@
 package apply
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
-
-	jsonpatch "github.com/evanphx/json-patch"
 
 	"kubevirt.io/kubevirt/pkg/apimachinery/patch"
 	"kubevirt.io/kubevirt/pkg/testutils"
@@ -1172,30 +1171,31 @@ var _ = Describe("Apply Apps", func() {
 	Context("on calling syncDeployment", func() {
 		var cachedDeployment *appsv1.Deployment
 		var strategyDeployment *appsv1.Deployment
-		var err error
 		var clientset *kubecli.MockKubevirtClient
-		var dpClient *fake.Clientset
 		var kv *v1.KubeVirt
-		var expectations *util.Expectations
 		var stores util.Stores
 		var ctrl *gomock.Controller
-		var revisionAnnotation = "deployment.kubernetes.io/revision"
-		var fakeAnnotation = "fakeAnnotation.io/fake"
+		const revisionAnnotation = "deployment.kubernetes.io/revision"
+		const fakeAnnotation = "fakeAnnotation.io/fake"
 
 		BeforeEach(func() {
 			ctrl = gomock.NewController(GinkgoT())
 			kvInterface := kubecli.NewMockKubeVirtInterface(ctrl)
-			expectations = &util.Expectations{}
 			clientset = kubecli.NewMockKubevirtClient(ctrl)
-			dpClient = fake.NewSimpleClientset()
+			dpClient := fake.NewSimpleClientset()
 			clientset.EXPECT().KubeVirt(Namespace).Return(kvInterface).AnyTimes()
 			clientset.EXPECT().AppsV1().Return(dpClient.AppsV1()).AnyTimes()
 
-			kv = &v1.KubeVirt{}
+			kv = &v1.KubeVirt{
+				ObjectMeta: v12.ObjectMeta{
+					Namespace: Namespace,
+				},
+			}
 			virtControllerConfig := &util.KubeVirtDeploymentConfig{
 				Registry:        Registry,
 				KubeVirtVersion: Version,
 			}
+			var err error
 			strategyDeployment, err = components.NewControllerDeployment(
 				Namespace,
 				virtControllerConfig.GetImageRegistry(),
@@ -1216,9 +1216,12 @@ var _ = Describe("Apply Apps", func() {
 				virtControllerConfig.GetVerbosity(),
 				virtControllerConfig.GetExtraEnv())
 			Expect(err).ToNot(HaveOccurred())
+			strategyDeployment.Generation = 2
+
+			_, err = clientset.AppsV1().Deployments(Namespace).Create(context.TODO(), strategyDeployment, metav1.CreateOptions{})
+			Expect(err).NotTo(HaveOccurred())
 
 			cachedDeployment = strategyDeployment.DeepCopy()
-			cachedDeployment.Generation = 2
 			cachedDeployment.Annotations = map[string]string{
 				revisionAnnotation: "4",
 				fakeAnnotation:     "fake",
@@ -1228,46 +1231,19 @@ var _ = Describe("Apply Apps", func() {
 		})
 
 		It("should not remove revision annotation", func() {
-			dpClient.Fake.PrependReactor("patch", "deployments", func(action testing.Action) (handled bool, obj runtime.Object, err error) {
-				cachedDeploymentBytes, err := json.Marshal(cachedDeployment)
-				if err != nil {
-					return false, nil, err
-				}
-
-				patchAction := action.(testing.PatchAction)
-				patchBytes := patchAction.GetPatch()
-
-				patchJSON, err := jsonpatch.DecodePatch(patchBytes)
-				if err != nil {
-					return false, nil, err
-				}
-
-				newDeploymentBytes, err := patchJSON.Apply(cachedDeploymentBytes)
-				if err != nil {
-					return false, nil, err
-				}
-
-				var newDeployment *appsv1.Deployment
-				if err = json.Unmarshal(newDeploymentBytes, &newDeployment); err != nil {
-					return false, nil, err
-				}
-
-				return true, newDeployment, nil
-			})
 			r := &Reconciler{
 				clientset:    clientset,
 				kv:           kv,
-				expectations: expectations,
+				expectations: &util.Expectations{},
 				stores:       stores,
 			}
-			d, err := r.syncDeployment(strategyDeployment)
+			_, err := r.syncDeployment(strategyDeployment)
 			Expect(err).ToNot(HaveOccurred())
-			Expect(d.Annotations).ToNot(BeNil())
-			val, exist := d.Annotations[revisionAnnotation]
-			Expect(exist).To(BeTrue())
-			Expect(val).To(Equal("4"))
-			_, exist = d.Annotations[fakeAnnotation]
-			Expect(exist).To(BeFalse())
+			updatedDeploy, err := clientset.AppsV1().Deployments(Namespace).Get(context.TODO(), strategyDeployment.Name, metav1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedDeploy.Annotations).ToNot(BeNil())
+			Expect(updatedDeploy.Annotations).To(HaveKeyWithValue(revisionAnnotation, "4"))
+			Expect(updatedDeploy.Annotations).ToNot(HaveKey(fakeAnnotation))
 		})
 	})
 })
