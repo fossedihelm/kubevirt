@@ -291,6 +291,88 @@ var _ = Describe("Volume Migration", func() {
 		)
 
 	})
+
+	Context("CanVolumesUpdateMigration", func() {
+		BeforeEach(func() {})
+		DescribeTable("should validate if the VMI can be migrate due to a volume update", func(vmi *virtv1.VirtualMachineInstance, exectedRes bool) {
+			Expect(volumemigration.CanVolumesUpdateMigration(vmi)).To(Equal(exectedRes))
+		},
+			Entry("with nil VMI", nil, false),
+			Entry("without migrated volumes", libvmi.New(), false),
+			Entry("with valid migrated volumes", libvmi.New(libvmi.WithStatus(
+				&v1.VirtualMachineInstanceStatus{
+					MigratedVolumes: []virtv1.StorageMigratedVolumeInfo{
+						{
+							VolumeName:         "disk0",
+							SourcePVCInfo:      &virtv1.PersistentVolumeClaimInfo{ClaimName: "src"},
+							DestinationPVCInfo: &virtv1.PersistentVolumeClaimInfo{ClaimName: "dst"},
+						},
+					},
+					Conditions: []virtv1.VirtualMachineInstanceCondition{
+						virtv1.VirtualMachineInstanceCondition{
+							Type:   virtv1.VirtualMachineInstanceIsMigratable,
+							Status: k8sv1.ConditionFalse,
+							Reason: virtv1.VirtualMachineInstanceReasonDisksNotMigratable,
+						},
+					},
+				})), true),
+			Entry("with valid migrated volumes but unmigratable VMI", libvmi.New(libvmi.WithStatus(
+				&v1.VirtualMachineInstanceStatus{
+					MigratedVolumes: []virtv1.StorageMigratedVolumeInfo{
+						{
+							VolumeName:         "disk0",
+							SourcePVCInfo:      &virtv1.PersistentVolumeClaimInfo{ClaimName: "src"},
+							DestinationPVCInfo: &virtv1.PersistentVolumeClaimInfo{ClaimName: "dst"},
+						},
+					},
+					Conditions: []virtv1.VirtualMachineInstanceCondition{
+						virtv1.VirtualMachineInstanceCondition{
+							Type:   virtv1.VirtualMachineInstanceIsMigratable,
+							Status: k8sv1.ConditionFalse,
+							Reason: virtv1.VirtualMachineInstanceReasonDisksNotMigratable,
+						},
+						virtv1.VirtualMachineInstanceCondition{
+							Type:   virtv1.VirtualMachineInstanceIsMigratable,
+							Status: k8sv1.ConditionFalse,
+							Reason: virtv1.VirtualMachineInstanceReasonInterfaceNotMigratable,
+						},
+					},
+				})), false),
+			Entry("with valid migrated volumes but with an additional RWO volume", libvmi.New(libvmi.WithStatus(
+				&v1.VirtualMachineInstanceStatus{
+					MigratedVolumes: []virtv1.StorageMigratedVolumeInfo{
+						{
+							VolumeName:         "disk0",
+							SourcePVCInfo:      &virtv1.PersistentVolumeClaimInfo{ClaimName: "src"},
+							DestinationPVCInfo: &virtv1.PersistentVolumeClaimInfo{ClaimName: "dst"},
+						},
+					},
+					Conditions: []virtv1.VirtualMachineInstanceCondition{
+						virtv1.VirtualMachineInstanceCondition{
+							Type:   virtv1.VirtualMachineInstanceIsMigratable,
+							Status: k8sv1.ConditionFalse,
+							Reason: virtv1.VirtualMachineInstanceReasonDisksNotMigratable,
+						},
+					},
+					VolumeStatus: []virtv1.VolumeStatus{
+						{
+							Name: "disk0",
+							PersistentVolumeClaimInfo: &virtv1.PersistentVolumeClaimInfo{
+								ClaimName:   "src",
+								AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
+							},
+						},
+						{
+							Name: "disk1",
+							PersistentVolumeClaimInfo: &virtv1.PersistentVolumeClaimInfo{
+								ClaimName:   "src",
+								AccessModes: []k8sv1.PersistentVolumeAccessMode{k8sv1.ReadWriteOnce},
+							},
+						},
+					},
+				})), false),
+		)
+	})
 })
 
 func addPVC(vmi *virtv1.VirtualMachineInstance, diskName, claim string) {
