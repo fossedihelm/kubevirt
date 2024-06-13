@@ -1426,6 +1426,7 @@ var _ = Describe("VirtualMachineInstance Mutator", func() {
 					Guest:    &guest,
 					MaxGuest: &maxGuest,
 				}
+
 				_, spec, _ := getMetaSpecStatusFromAdmit(rt.GOARCH)
 				Expect(spec.Domain.Memory.Guest.Value()).To(Equal(guest.Value()))
 				Expect(spec.Domain.Memory.MaxGuest.Value()).To(Equal(maxGuest.Value()))
@@ -1441,6 +1442,7 @@ var _ = Describe("VirtualMachineInstance Mutator", func() {
 				vmi.Spec.Domain.Memory = &v1.Memory{
 					Guest: &guest,
 				}
+
 				_, spec, _ := getMetaSpecStatusFromAdmit(rt.GOARCH)
 				Expect(spec.Domain.Memory.MaxGuest.Value()).To(Equal(maxGuest.Value()))
 			})
@@ -1456,6 +1458,7 @@ var _ = Describe("VirtualMachineInstance Mutator", func() {
 				vmi.Spec.Domain.Memory = &v1.Memory{
 					Guest: &guest,
 				}
+
 				_, spec, _ := getMetaSpecStatusFromAdmit(rt.GOARCH)
 				Expect(spec.Domain.Memory.Guest.Value()).To(Equal(guest.Value()))
 				Expect(spec.Domain.Memory.MaxGuest.Value()).To(Equal(maxGuest.Value()))
@@ -1466,6 +1469,7 @@ var _ = Describe("VirtualMachineInstance Mutator", func() {
 				vmi.Spec.Domain.Memory = &v1.Memory{
 					Guest: &guest,
 				}
+
 				_, spec, _ := getMetaSpecStatusFromAdmit(rt.GOARCH)
 				Expect(spec.Domain.Memory.MaxGuest.Value()).To(Equal(expectedMaxGuest.Value()))
 			})
@@ -1480,6 +1484,7 @@ var _ = Describe("VirtualMachineInstance Mutator", func() {
 				vmi.Spec.Domain.Memory = &v1.Memory{
 					Guest: &guest,
 				}
+
 				_, spec, _ := getMetaSpecStatusFromAdmit(rt.GOARCH)
 				Expect(spec.Domain.Memory.MaxGuest.Value()).To(Equal(expectedMaxGuest.Value()))
 			})
