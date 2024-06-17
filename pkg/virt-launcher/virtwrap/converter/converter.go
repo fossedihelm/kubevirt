@@ -65,6 +65,7 @@ import (
 	cmdv1 "kubevirt.io/kubevirt/pkg/handler-launcher-com/cmd/v1"
 	hostdisk "kubevirt.io/kubevirt/pkg/host-disk"
 	"kubevirt.io/kubevirt/pkg/ignition"
+	"kubevirt.io/kubevirt/pkg/liveupdate/memory"
 	storagetypes "kubevirt.io/kubevirt/pkg/storage/types"
 	"kubevirt.io/kubevirt/pkg/util"
 )
@@ -1216,11 +1217,11 @@ func setupDomainMemory(vmi *v1.VirtualMachineInstance, domain *api.Domain) error
 		return err
 	}
 
-	blockAlignment := MemoryHotplugBlockAlignmentBytes
+	blockAlignment := memory.HotplugBlockAlignmentBytes
 	if vmi.Spec.Domain.Memory != nil &&
 		vmi.Spec.Domain.Memory.Hugepages != nil &&
 		vmi.Spec.Domain.Memory.Hugepages.PageSize == "1Gi" {
-		blockAlignment = MemoryHotplug1GHugePagesBlockAlignmentBytes
+		blockAlignment = memory.Hotplug1GHugePagesBlockAlignmentBytes
 	}
 
 	domain.Spec.Devices.Memory = &api.MemoryDevice{
