@@ -25,6 +25,7 @@ import (
 	"kubevirt.io/client-go/api"
 
 	virtv1 "kubevirt.io/api/core/v1"
+	kubevirtfake "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/fake"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/client-go/log"
 
@@ -44,6 +45,7 @@ var _ = Describe("Node controller with", func() {
 	var recorder *record.FakeRecorder
 	var mockQueue *testutils.MockWorkQueue
 	var virtClient *kubecli.MockKubevirtClient
+	var virtFakeClient *kubevirtfake.Clientset
 	var kubeClient *fake.Clientset
 	var vmiFeeder *testutils.VirtualMachineFeeder
 
@@ -70,9 +72,10 @@ var _ = Describe("Node controller with", func() {
 		controller.Queue = mockQueue
 		vmiFeeder = testutils.NewVirtualMachineFeeder(mockQueue, vmiSource)
 
-		// Set up mock client
-		virtClient.EXPECT().VirtualMachineInstance(v1.NamespaceAll).Return(vmiInterface).AnyTimes()
-		virtClient.EXPECT().VirtualMachineInstance(v1.NamespaceDefault).Return(vmiInterface).AnyTimes()
+		// Set up fake client
+		virtFakeClient = kubevirtfake.NewSimpleClientset()
+		virtClient.EXPECT().VirtualMachineInstance(v1.NamespaceAll).Return(virtFakeClient.KubevirtV1().VirtualMachineInstances(v1.NamespaceAll)).AnyTimes()
+		virtClient.EXPECT().VirtualMachineInstance(v1.NamespaceDefault).Return(virtFakeClient.KubevirtV1().VirtualMachineInstances(v1.NamespaceDefault)).AnyTimes()
 		kubeClient = fake.NewSimpleClientset()
 		virtClient.EXPECT().CoreV1().Return(kubeClient.CoreV1()).AnyTimes()
 		virtClient.EXPECT().AppsV1().Return(kubeClient.AppsV1()).AnyTimes()
@@ -155,8 +158,6 @@ var _ = Describe("Node controller with", func() {
 				return true, nil, nil
 			})
 
-			vmiInterface.EXPECT().List(context.Background(), gomock.Any()).Return(&virtv1.VirtualMachineInstanceList{}, nil)
-
 			controller.Execute()
 			testutils.ExpectEvent(recorder, NodeUnresponsiveReason)
 		})
@@ -164,14 +165,20 @@ var _ = Describe("Node controller with", func() {
 			node := NewUnhealthyNode("testnode")
 			vmi := NewRunningVirtualMachine("vmi1", node)
 			vmi.Status.Phase = phase
+			_, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(v1.NamespaceDefault).Create(context.Background(), vmi, v1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
 
 			kubeClient.Fake.PrependReactor("list", "pods", func(action testing.Action) (handled bool, obj runtime.Object, err error) {
 				return true, &k8sv1.PodList{}, nil
 			})
-			vmiInterface.EXPECT().Patch(context.Background(), vmi.Name, types.JSONPatchType, gomock.Any(), v1.PatchOptions{})
 
 			Expect(controller.checkVirtLauncherPodsAndUpdateVMIStatus(node.Name, []*virtv1.VirtualMachineInstance{vmi}, log.DefaultLogger())).To(Succeed())
 			testutils.ExpectEvent(recorder, NodeUnresponsiveReason)
+
+			updatedVMI, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vmi.Namespace).Get(context.Background(), vmi.Name, v1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedVMI.Status.Phase).To(Equal(virtv1.Failed))
+			Expect(updatedVMI.Status.Reason).To(Equal(NodeUnresponsiveReason))
 		},
 			Entry("running state", virtv1.Running),
 			Entry("scheduled state", virtv1.Scheduled),
@@ -182,14 +189,40 @@ var _ = Describe("Node controller with", func() {
 			vmi1 := NewRunningVirtualMachine("vmi1", node)
 			vmi2 := NewRunningVirtualMachine("vmi2", node)
 
-			vmiInterface.EXPECT().Patch(context.Background(), vmi.Name, types.JSONPatchType, gomock.Any(), v1.PatchOptions{}).Times(1)
-			vmiInterface.EXPECT().Patch(context.Background(), vmi1.Name, types.JSONPatchType, gomock.Any(), v1.PatchOptions{}).Return(nil, fmt.Errorf("some error")).Times(1)
-			vmiInterface.EXPECT().Patch(context.Background(), vmi2.Name, types.JSONPatchType, gomock.Any(), v1.PatchOptions{}).Times(1)
+			_, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(v1.NamespaceDefault).Create(context.Background(), vmi, v1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(v1.NamespaceDefault).Create(context.Background(), vmi1, v1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(v1.NamespaceDefault).Create(context.Background(), vmi2, v1.CreateOptions{})
+			Expect(err).ToNot(HaveOccurred())
+
+			virtFakeClient.Fake.PrependReactor("patch", "virtualmachineinstances", func(action testing.Action) (handled bool, obj runtime.Object, err error) {
+				patch, ok := action.(testing.PatchAction)
+				Expect(ok).To(BeTrue())
+				if patch.GetName() == vmi1.Name {
+					return true, nil, fmt.Errorf("some error")
+				}
+				return false, nil, nil
+			})
+			//vmiInterface.EXPECT().Patch(context.Background(), vmi.Name, types.JSONPatchType, gomock.Any(), v1.PatchOptions{}).Times(1)
+			//vmiInterface.EXPECT().Patch(context.Background(), vmi1.Name, types.JSONPatchType, gomock.Any(), v1.PatchOptions{}).Return(nil, fmt.Errorf("some error")).Times(1)
+			//vmiInterface.EXPECT().Patch(context.Background(), vmi2.Name, types.JSONPatchType, gomock.Any(), v1.PatchOptions{}).Times(1)
 
 			Expect(controller.updateVMIWithFailedStatus([]*virtv1.VirtualMachineInstance{vmi, vmi1, vmi2}, log.DefaultLogger())).To(HaveOccurred())
 			testutils.ExpectEvent(recorder, NodeUnresponsiveReason)
 			testutils.ExpectEvent(recorder, NodeUnresponsiveReason)
 			testutils.ExpectEvent(recorder, NodeUnresponsiveReason)
+			updatedVMI, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vmi.Namespace).Get(context.Background(), vmi.Name, v1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedVMI.Status.Phase).To(Equal(virtv1.Failed))
+			Expect(updatedVMI.Status.Reason).To(Equal(NodeUnresponsiveReason))
+			updatedVMI1, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vmi.Namespace).Get(context.Background(), vmi1.Name, v1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedVMI1.Status.Phase).To(Equal(virtv1.Running))
+			updatedVMI2, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vmi.Namespace).Get(context.Background(), vmi.Name, v1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(updatedVMI2.Status.Phase).To(Equal(virtv1.Failed))
+			Expect(updatedVMI2.Status.Reason).To(Equal(NodeUnresponsiveReason))
 		})
 		It("should set a vmi without a pod to failed state, triggered by vmi add event", func() {
 			node := NewUnhealthyNode("testnode")
