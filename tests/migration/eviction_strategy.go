@@ -38,6 +38,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 
 	"kubevirt.io/kubevirt/pkg/libvmi"
+	"kubevirt.io/kubevirt/pkg/pointer"
 	"kubevirt.io/kubevirt/tests"
 	"kubevirt.io/kubevirt/tests/console"
 	"kubevirt.io/kubevirt/tests/framework/checks"
@@ -130,8 +131,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 			It("should create the PDB if VMI is live-migratable and has the LiveMigrateIfPossible strategy set", func() {
 				By("creating the VMI")
 				var err error
-				strategy := v1.EvictionStrategyLiveMigrateIfPossible
-				vmi.Spec.EvictionStrategy = &strategy
+				vmi.Spec.EvictionStrategy = pointer.P(v1.EvictionStrategyLiveMigrateIfPossible)
 				vmi, err = virtClient.VirtualMachineInstance(vmi.Namespace).Create(context.Background(), vmi, metav1.CreateOptions{})
 				Expect(err).ToNot(HaveOccurred())
 
@@ -158,7 +158,6 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 				)
 
 				By("Adding a fake old virt-controller PDB")
-				two := intstr.FromInt(2)
 				pdb, err := virtClient.PolicyV1().PodDisruptionBudgets(createdVMI.Namespace).Create(context.Background(), &policyv1.PodDisruptionBudget{
 					ObjectMeta: metav1.ObjectMeta{
 						OwnerReferences: []metav1.OwnerReference{
@@ -167,7 +166,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 						GenerateName: "kubevirt-disruption-budget-",
 					},
 					Spec: policyv1.PodDisruptionBudgetSpec{
-						MinAvailable: &two,
+						MinAvailable: pointer.P(intstr.FromInt32(2)),
 						Selector: &metav1.LabelSelector{
 							MatchLabels: map[string]string{
 								v1.CreatedByLabel: string(createdVMI.UID),
@@ -269,9 +268,8 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 					// Taints defined by k8s are special and can't be applied manually.
 					// Temporarily configure KubeVirt to use something else for the duration of these tests.
 					if libnode.GetNodeDrainKey() == "node.kubernetes.io/unschedulable" {
-						drain := "kubevirt.io/drain"
 						cfg := getCurrentKvConfig(virtClient)
-						cfg.MigrationConfiguration.NodeDrainTaintKey = &drain
+						cfg.MigrationConfiguration.NodeDrainTaintKey = pointer.P("kubevirt.io/drain")
 						tests.UpdateKubeVirtConfigValueAndWait(cfg)
 					}
 
@@ -345,8 +343,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 
 					By("Configuring a custom nodeDrainTaintKey in kubevirt configuration")
 					cfg := getCurrentKvConfig(virtClient)
-					drainKey := "kubevirt.io/alt-drain"
-					cfg.MigrationConfiguration.NodeDrainTaintKey = &drainKey
+					cfg.MigrationConfiguration.NodeDrainTaintKey = pointer.P("kubevirt.io/alt-drain")
 					tests.UpdateKubeVirtConfigValueAndWait(cfg)
 
 					By("Starting the VirtualMachineInstance")
@@ -552,8 +549,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 			kv := libkubevirt.GetCurrentKv(virtClient)
 			originalKV = kv.DeepCopy()
 
-			evictionStrategy := v1.EvictionStrategyLiveMigrate
-			kv.Spec.Configuration.EvictionStrategy = &evictionStrategy
+			kv.Spec.Configuration.EvictionStrategy = pointer.P(v1.EvictionStrategyLiveMigrate)
 			tests.UpdateKubeVirtConfigValueAndWait(kv.Spec.Configuration)
 		})
 
