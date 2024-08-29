@@ -56,10 +56,7 @@ import (
 )
 
 var _ = SIGMigrationDescribe("Live Migration", func() {
-	var (
-		virtClient kubecli.KubevirtClient
-		err        error
-	)
+	var virtClient kubecli.KubevirtClient
 
 	BeforeEach(func() {
 		checks.SkipIfMigrationIsNotPossible()
@@ -132,6 +129,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 
 			It("should create the PDB if VMI is live-migratable and has the LiveMigrateIfPossible strategy set", func() {
 				By("creating the VMI")
+				var err error
 				strategy := v1.EvictionStrategyLiveMigrateIfPossible
 				vmi.Spec.EvictionStrategy = &strategy
 				vmi, err = virtClient.VirtualMachineInstance(vmi.Namespace).Create(context.Background(), vmi, metav1.CreateOptions{})
@@ -405,6 +403,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 					vm_noevict := libvmi.NewVirtualMachine(vmi_noevict)
 
 					// post VMs
+					var err error
 					vm_evict1, err = virtClient.VirtualMachine(vm_evict1.Namespace).Create(context.Background(), vm_evict1, metav1.CreateOptions{})
 					Expect(err).ToNot(HaveOccurred())
 					vm_evict2, err = virtClient.VirtualMachine(vm_evict2.Namespace).Create(context.Background(), vm_evict2, metav1.CreateOptions{})
@@ -512,6 +511,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 				By("checking that all VMIs were migrated, and we never see more than two running migrations in parallel")
 				Eventually(func() []string {
 					var nodes []string
+					var err error
 					for _, vmi := range vmis {
 						vmi, err = virtClient.VirtualMachineInstance(vmi.Namespace).Get(context.Background(), vmi.Name, metav1.GetOptions{})
 						nodes = append(nodes, vmi.Status.NodeName)
