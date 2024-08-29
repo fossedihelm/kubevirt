@@ -40,6 +40,7 @@ import (
 	"kubevirt.io/kubevirt/pkg/pointer"
 	"kubevirt.io/kubevirt/tests"
 	"kubevirt.io/kubevirt/tests/console"
+	"kubevirt.io/kubevirt/tests/decorators"
 	"kubevirt.io/kubevirt/tests/framework/checks"
 	"kubevirt.io/kubevirt/tests/framework/cleanup"
 	"kubevirt.io/kubevirt/tests/framework/kubevirt"
@@ -72,7 +73,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 				vmi = alpineVMIWithEvictionStrategy()
 			})
 
-			It("[test_id:3242]should block the eviction api and migrate", func() {
+			It("[test_id:3242]should block the eviction api and migrate", decorators.Conformance, func() {
 				vmi = libvmops.RunVMIAndExpectLaunch(vmi, 180)
 				vmiNodeOrig := vmi.Status.NodeName
 				pod, err := libpod.GetPodByVirtualMachineInstance(vmi, vmi.Namespace)
@@ -106,6 +107,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 				Expect(resVMI.Status.EvacuationNodeName).To(Equal(""), "vmi evacuation state should be clean")
 			})
 
+			// Does it really makes sense?
 			It("[sig-compute][test_id:3243]should recreate the PDB if VMIs with similar names are recreated", func() {
 				for x := 0; x < 3; x++ {
 					By("creating the VMI")
@@ -147,7 +149,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 				Eventually(matcher.AllPDBs(vmi.Namespace), 3*time.Second, 500*time.Millisecond).Should(BeEmpty())
 			})
 
-			It("[sig-compute][test_id:7680]should delete PDBs created by an old virt-controller", func() {
+			It("[sig-compute][test_id:7680]should delete PDBs created by an old virt-controller", decorators.Conformance, func() {
 				By("creating the VMI")
 				createdVMI, err := virtClient.VirtualMachineInstance(vmi.Namespace).Create(context.Background(), vmi, metav1.CreateOptions{})
 				Expect(err).ToNot(HaveOccurred())
@@ -353,7 +355,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 					expectVMIMigratedToAnotherNode(vmi.Name, node)
 				})
 
-				It("[test_id:2224] should handle mixture of VMs with different eviction strategies.", func() {
+				It("[test_id:2224] should handle mixture of VMs with different eviction strategies.", decorators.Conformance, func() {
 					const labelKey = "testkey"
 
 					// give an affinity rule to ensure the vmi's get placed on the same node.
@@ -600,7 +602,7 @@ var _ = SIGMigrationDescribe("Live Migration", func() {
 			})
 
 			Context("with eviction strategy set to 'None'", func() {
-				It("[test_id:10156]The VMI should get evicted", func() {
+				It("[test_id:10156]The VMI should get evicted", decorators.Conformance, func() {
 					vmi := libvmifact.NewAlpine(
 						libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
 						libvmi.WithNetwork(v1.DefaultPodNetwork()),
