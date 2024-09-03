@@ -152,7 +152,7 @@ func (w *Waiting) watchVMIForPhase(vmi *v1.VirtualMachineInstance) *v1.VirtualMa
 
 	go func() {
 		defer ginkgo.GinkgoRecover()
-		objectEventWatcher.WaitFor(w.ctx, watcher.NormalEvent, v1.Started)
+		objectEventWatcher.WaitFor(w.ctx, watcher.NormalEvent, v1.Started.String())
 	}()
 
 	var retrievedVMI *v1.VirtualMachineInstance

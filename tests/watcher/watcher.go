@@ -51,6 +51,32 @@ type ObjectEventWatcher struct {
 	startType              startType
 	warningPolicy          WarningsPolicy
 	dontFailOnMissingEvent bool
+	eventType              EventType
+	reason                 string
+	message                string
+}
+
+type ObjectEventWatcherOpts func(objew ObjectEventWatcher)
+
+// WithEventType adds the eventType to the watch event check
+func WithEventType(eventType EventType) ObjectEventWatcherOpts {
+	return func(objew ObjectEventWatcher) {
+		objew.eventType = eventType
+	}
+}
+
+// WithReason adds the reason to the watch event check
+func WithReason(reason string) ObjectEventWatcherOpts {
+	return func(objew ObjectEventWatcher) {
+		objew.reason = reason
+	}
+}
+
+// WithMessage adds the message to the watch event check
+func WithMessage(message string) ObjectEventWatcherOpts {
+	return func(objew ObjectEventWatcher) {
+		objew.message = message
+	}
 }
 
 func New(object runtime.Object) *ObjectEventWatcher {
@@ -229,14 +255,25 @@ func (w *ObjectEventWatcher) Watch(ctx context.Context, processFunc ProcessFunc,
 	}
 }
 
-func (w *ObjectEventWatcher) WaitFor(ctx context.Context, eventType EventType, reason interface{}) (e *v1.Event) {
+func (w *ObjectEventWatcher) WaitFor(ctx context.Context, eventType EventType, reason string, opts ...ObjectEventWatcherOpts) (e *v1.Event) {
+	errorFmt := fmt.Sprintf("event type %s, reason = %s", string(eventType), reason)
+	w.eventType = eventType
+	w.reason = reason
+	for _, f := range opts {
+		f(*w)
+	}
+	if w.message != "" {
+		errorFmt = fmt.Sprintf("%s, message = %s", errorFmt, w.message)
+	}
 	w.Watch(ctx, func(event *v1.Event) bool {
-		if event.Type == string(eventType) && event.Reason == reflect.ValueOf(reason).String() {
-			e = event
-			return true
+		if event.Type == string(w.eventType) && event.Reason == w.reason {
+			if w.message == "" || event.Message == w.message {
+				e = event
+				return true
+			}
 		}
 		return false
-	}, fmt.Sprintf("event type %s, reason = %s", string(eventType), reflect.ValueOf(reason).String()))
+	}, errorFmt)
 	return
 }
 
