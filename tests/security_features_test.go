@@ -92,7 +92,7 @@ var _ = Describe("[Serial][sig-compute]SecurityFeatures", Serial, decorators.Sig
 				vmi.Spec.Networks = []v1.Network{}
 			})
 
-			It("[test_id:2953]Ensure virt-launcher pod securityContext type is correctly set", func() {
+			It("[test_id:2953][test_id:2895]Ensure virt-launcher pod securityContext type is correctly set and not privileged", decorators.Conformance, func() {
 
 				By("Starting a VirtualMachineInstance")
 				vmi, err = virtClient.VirtualMachineInstance(testsuite.GetTestNamespace(nil)).Create(context.Background(), vmi, metav1.CreateOptions{})
@@ -104,18 +104,6 @@ var _ = Describe("[Serial][sig-compute]SecurityFeatures", Serial, decorators.Sig
 				Expect(err).NotTo(HaveOccurred())
 
 				Expect(vmiPod.Spec.SecurityContext.SELinuxOptions).To(Equal(&k8sv1.SELinuxOptions{Type: "container_t"}))
-			})
-
-			It("[test_id:2895]Make sure the virt-launcher pod is not priviledged", func() {
-
-				By("Starting a VirtualMachineInstance")
-				vmi, err = virtClient.VirtualMachineInstance(testsuite.GetTestNamespace(nil)).Create(context.Background(), vmi, metav1.CreateOptions{})
-				Expect(err).ToNot(HaveOccurred())
-				libwait.WaitForSuccessfulVMIStart(vmi)
-
-				By("Check virt-launcher pod SecurityContext values")
-				vmiPod, err := libpod.GetPodByVirtualMachineInstance(vmi, vmi.Namespace)
-				Expect(err).NotTo(HaveOccurred())
 
 				for _, containerSpec := range vmiPod.Spec.Containers {
 					if containerSpec.Name == "compute" {
@@ -161,7 +149,7 @@ var _ = Describe("[Serial][sig-compute]SecurityFeatures", Serial, decorators.Sig
 
 		Context("With selinuxLauncherType defined as spc_t", func() {
 
-			It("[test_id:3787]Should honor custom SELinux type for virt-launcher", func() {
+			It("[test_id:3787]Should honor custom SELinux type for virt-launcher", decorators.Conformance, func() {
 				config := kubevirtConfiguration.DeepCopy()
 				superPrivilegedType := "spc_t"
 				config.SELinuxLauncherType = superPrivilegedType
@@ -239,7 +227,7 @@ var _ = Describe("[Serial][sig-compute]SecurityFeatures", Serial, decorators.Sig
 	Context("Check virt-launcher capabilities", func() {
 		var container k8sv1.Container
 
-		It("[test_id:4300]has precisely the documented extra capabilities relative to a regular user pod", func() {
+		It("[test_id:4300]has precisely the documented extra capabilities relative to a regular user pod", decorators.Conformance, func() {
 			vmi := libvmifact.NewAlpine()
 
 			By("Starting a New VMI")
