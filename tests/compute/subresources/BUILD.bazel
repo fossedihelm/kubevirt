@@ -7,6 +7,7 @@ go_library(
         "rbac.go",
         "softreboot.go",
         "subresource_api.go",
+        "vm.go",
     ],
     importpath = "kubevirt.io/kubevirt/tests/compute/subresources",
     visibility = ["//visibility:public"],
