@@ -37,6 +37,7 @@ import (
 	"kubevirt.io/kubevirt/pkg/libvmi"
 	"kubevirt.io/kubevirt/tests/compute"
 	"kubevirt.io/kubevirt/tests/console"
+	"kubevirt.io/kubevirt/tests/decorators"
 	"kubevirt.io/kubevirt/tests/framework/kubevirt"
 	"kubevirt.io/kubevirt/tests/framework/matcher"
 	"kubevirt.io/kubevirt/tests/libnet"
@@ -59,7 +60,7 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 		BeforeEach(func() {
 			var err error
 			vmi := libvmifact.NewCirros()
-			vm = libvmi.NewVirtualMachine(vmi, libvmi.WithRunning())
+			vm = libvmi.NewVirtualMachine(vmi, libvmi.WithRunStrategy(v1.RunStrategyAlways))
 			vm, err = virtClient.VirtualMachine(testsuite.GetTestNamespace(vmi)).Create(context.Background(), vm, metav1.CreateOptions{})
 			Expect(err).ToNot(HaveOccurred())
 			Eventually(func() bool {
@@ -75,14 +76,14 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 			)
 		})
 
-		It("[test_id:7476]Freeze without guest agent", func() {
+		It("[test_id:7476]Freeze without guest agent", decorators.Conformance, func() {
 			expectedErr := "Internal error occurred"
 			err := virtClient.VirtualMachineInstance(testsuite.GetTestNamespace(vm)).Freeze(context.Background(), vm.Name, 0)
 			Expect(err).To(HaveOccurred())
 			Expect(err.Error()).To(ContainSubstring(expectedErr))
 		})
 
-		It("[test_id:7477]Unfreeze without guest agent", func() {
+		It("[test_id:7477]Unfreeze without guest agent", decorators.Conformance, func() {
 			expectedErr := "Internal error occurred"
 			err := virtClient.VirtualMachineInstance(testsuite.GetTestNamespace(vm)).Unfreeze(context.Background(), vm.Name)
 			Expect(err).To(HaveOccurred())
@@ -97,7 +98,7 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 			var err error
 			vmi := libvmifact.NewFedora(libnet.WithMasqueradeNetworking())
 			vmi.Namespace = testsuite.GetTestNamespace(vmi)
-			vm = libvmi.NewVirtualMachine(vmi, libvmi.WithRunning())
+			vm = libvmi.NewVirtualMachine(vmi, libvmi.WithRunStrategy(v1.RunStrategyAlways))
 			vm, err = virtClient.VirtualMachine(testsuite.GetTestNamespace(vmi)).Create(context.Background(), vm, metav1.CreateOptions{})
 			Expect(err).ToNot(HaveOccurred())
 			Eventually(func() bool {
@@ -122,7 +123,7 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 			}, 30*time.Second, 2*time.Second).Should(BeTrue())
 		}
 
-		It("[test_id:7479]Freeze Unfreeze should succeed", func() {
+		It("[test_id:7479]Freeze Unfreeze should succeed", decorators.Conformance, func() {
 			By("Freezing VMI")
 			err := virtClient.VirtualMachineInstance(testsuite.GetTestNamespace(vm)).Freeze(context.Background(), vm.Name, 0)
 			Expect(err).ToNot(HaveOccurred())
@@ -154,7 +155,7 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 			}
 		})
 
-		It("Freeze without Unfreeze should trigger unfreeze after timeout", func() {
+		It("Freeze without Unfreeze should trigger unfreeze after timeout", decorators.Conformance, func() {
 			By("Freezing VMI")
 			unfreezeTimeout := 10 * time.Second
 			err := virtClient.VirtualMachineInstance(testsuite.GetTestNamespace(vm)).Freeze(context.Background(), vm.Name, unfreezeTimeout)
@@ -170,7 +171,7 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 	Context("Soft reboot", func() {
 		const vmiLaunchTimeout = 360
 
-		It("soft reboot vmi with agent connected should succeed", func() {
+		It("soft reboot vmi with agent connected should succeed", decorators.Conformance, func() {
 			vmi := libvmops.RunVMIAndExpectLaunch(libvmifact.NewFedora(withoutACPI()), vmiLaunchTimeout)
 
 			Eventually(matcher.ThisVMI(vmi), 12*time.Minute, 2*time.Second).Should(matcher.HaveConditionTrue(v1.VirtualMachineInstanceAgentConnected))
@@ -181,7 +182,7 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 			waitForVMIRebooted(vmi, console.LoginToFedora)
 		})
 
-		It("soft reboot vmi with ACPI feature enabled should succeed", func() {
+		It("soft reboot vmi with ACPI feature enabled should succeed", decorators.Conformance, func() {
 			vmi := libvmops.RunVMIAndExpectLaunch(libvmifact.NewCirros(), vmiLaunchTimeout)
 
 			Expect(console.LoginToCirros(vmi)).To(Succeed())
@@ -193,7 +194,7 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 			waitForVMIRebooted(vmi, console.LoginToCirros)
 		})
 
-		It("soft reboot vmi neither have the agent connected nor the ACPI feature enabled should fail", func() {
+		It("soft reboot vmi neither have the agent connected nor the ACPI feature enabled should fail", decorators.Conformance, func() {
 			vmi := libvmops.RunVMIAndExpectLaunch(libvmifact.NewCirros(withoutACPI()), vmiLaunchTimeout)
 
 			Expect(console.LoginToCirros(vmi)).To(Succeed())
@@ -203,7 +204,7 @@ var _ = compute.SIGDescribe("VirtualMachineInstance subresource", func() {
 			Expect(err).To(MatchError(ContainSubstring("VMI neither have the agent connected nor the ACPI feature enabled")))
 		})
 
-		It("soft reboot vmi should fail to soft reboot a paused vmi", func() {
+		It("soft reboot vmi should fail to soft reboot a paused vmi", decorators.Conformance, func() {
 			vmi := libvmops.RunVMIAndExpectLaunch(libvmifact.NewFedora(), vmiLaunchTimeout)
 			Eventually(matcher.ThisVMI(vmi), 12*time.Minute, 2*time.Second).Should(matcher.HaveConditionTrue(v1.VirtualMachineInstanceAgentConnected))
 

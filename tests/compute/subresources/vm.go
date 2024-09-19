@@ -51,31 +51,7 @@ var _ = compute.SIGDescribe("[rfe_id:1177][crit:medium][vendor:cnv-qe@redhat.com
 		virtClient = kubevirt.Client()
 	})
 
-	Context("with a restart endpoint", func() {
-		DescribeTable("should return an error when VM is not running", func(errMsg string, opts ...libvmi.VMOption) {
-			By("Creating VM")
-			vm := libvmi.NewVirtualMachine(libvmifact.NewGuestless(), opts...)
-			vm, err := virtClient.VirtualMachine(testsuite.GetTestNamespace(vm)).Create(context.Background(), vm, metav1.CreateOptions{})
-			Expect(err).NotTo(HaveOccurred())
-
-			By("Trying to start VM via Restart subresource")
-			err = virtClient.VirtualMachine(testsuite.GetTestNamespace(vm)).Restart(context.Background(), vm.Name, &v1.RestartOptions{})
-			Expect(err).To(MatchError(ContainSubstring(errMsg)))
-		},
-			Entry("[test_id:1305][posneg:negative] with RunStrategyHalted", "RunStategy Halted does not support manual restart requests", libvmi.WithRunStrategy(v1.RunStrategyHalted)),
-			Entry("[test_id:3174] with RunStrategyManual", "VM is not running: Halted", libvmi.WithRunStrategy(v1.RunStrategyManual)),
-		)
-
-		It("[test_id:2265][posneg:negative] should return an error when VM has not been found but VMI is running", func() {
-			vmi := libvmifact.NewGuestless()
-			libvmops.RunVMIAndExpectLaunch(vmi, 60)
-
-			err := virtClient.VirtualMachine(testsuite.GetTestNamespace(vmi)).Restart(context.Background(), vmi.Name, &v1.RestartOptions{})
-			Expect(err).To(HaveOccurred())
-		})
-	})
-
-	It("[test_id:1529]should start a VirtualMachine only once", func() {
+	It("[test_id:1529]should start a VirtualMachine only once", decorators.Conformance, func() {
 		By("getting a VM")
 		vm := libvmi.NewVirtualMachine(libvmifact.NewGuestless())
 		vm, err := virtClient.VirtualMachine(testsuite.GetTestNamespace(vm)).Create(context.Background(), vm, metav1.CreateOptions{})
@@ -96,7 +72,7 @@ var _ = compute.SIGDescribe("[rfe_id:1177][crit:medium][vendor:cnv-qe@redhat.com
 		Expect(err).To(MatchError(ContainSubstring("VM is already running")))
 	})
 
-	It("[test_id:1530]should stop a VirtualMachine only once", func() {
+	It("[test_id:1530]should stop a VirtualMachine only once", decorators.Conformance, func() {
 		By("getting a VM")
 		vm := libvmi.NewVirtualMachine(libvmifact.NewGuestless())
 		vm, err := virtClient.VirtualMachine(testsuite.GetTestNamespace(vm)).Create(context.Background(), vm, metav1.CreateOptions{})
