@@ -7,7 +7,6 @@ go_library(
         "openapi.go",
         "pausing.go",
         "rbac.go",
-        "softreboot.go",
         "vm.go",
         "vmi.go",
     ],
