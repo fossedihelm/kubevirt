@@ -3,11 +3,11 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library")
 go_library(
     name = "go_default_library",
     srcs = [
+        "expandspec.go",
         "openapi.go",
         "pausing.go",
         "rbac.go",
         "softreboot.go",
-        "subresource_api.go",
         "vm.go",
         "vmi.go",
     ],
