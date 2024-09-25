@@ -3,17 +3,16 @@ package expose_test
 import (
 	"context"
 
+	"github.com/golang/mock/gomock"
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"github.com/onsi/gomega/gstruct"
+	"github.com/onsi/gomega/types"
 
-	"github.com/golang/mock/gomock"
 	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/util/intstr"
 	"k8s.io/client-go/kubernetes/fake"
-	"k8s.io/client-go/testing"
-
 	v1 "kubevirt.io/api/core/v1"
 	kubevirtfake "kubevirt.io/client-go/generated/kubevirt/clientset/versioned/fake"
 	"kubevirt.io/client-go/kubecli"
@@ -179,28 +178,22 @@ var _ = Describe("Expose", func() {
 		)
 
 		var (
-			vmi            *v1.VirtualMachineInstance
-			vm             *v1.VirtualMachine
-			vmirs          *v1.VirtualMachineInstanceReplicaSet
-			createdService *k8sv1.Service
-			resources      map[string]string
+			vmi       *v1.VirtualMachineInstance
+			vm        *v1.VirtualMachine
+			vmirs     *v1.VirtualMachineInstanceReplicaSet
+			resources map[string]string
 		)
 
+		expectService := func(serviceName string, matcher types.GomegaMatcher) {
+			createdService, err := kubeClient.CoreV1().Services(metav1.NamespaceDefault).Get(context.Background(), serviceName, metav1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			Expect(createdService.Name).To(Equal(serviceName))
+			Expect(createdService.Spec.Selector).To(HaveLen(1))
+			Expect(createdService.Spec.Selector).To(HaveKeyWithValue(labelKey, labelValue))
+			Expect(createdService.Spec).To(matcher)
+		}
+
 		BeforeEach(func() {
-			kubeClient.Fake.PrependReactor("create", "services", func(action testing.Action) (bool, runtime.Object, error) {
-				createAction, ok := action.(testing.CreateAction)
-				Expect(ok).To(BeTrue())
-				createdService, ok = createAction.GetObject().(*k8sv1.Service)
-				Expect(ok).To(BeTrue())
-
-				// These assertions should be true for all created services
-				Expect(createdService.Name).To(Equal(serviceName))
-				Expect(createdService.Spec.Selector).To(HaveLen(1))
-				Expect(createdService.Spec.Selector).To(HaveKeyWithValue(labelKey, labelValue))
-
-				return true, createdService, nil
-			})
-
 			vmi = libvmi.New(libvmi.WithLabel(labelKey, labelValue))
 			vmi, err := virtClient.KubevirtV1().VirtualMachineInstances(metav1.NamespaceDefault).Create(context.Background(), vmi, metav1.CreateOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -227,17 +220,20 @@ var _ = Describe("Expose", func() {
 
 		It("creating a service with default settings", func() {
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr)
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr)
 				Expect(err).ToNot(HaveOccurred())
-
-				Expect(createdService.Spec.Ports).To(HaveLen(1))
-				Expect(createdService.Spec.Ports[0].Port).To(Equal(servicePort))
-				Expect(createdService.Spec.Ports[0].Protocol).To(Equal(k8sv1.ProtocolTCP))
-				Expect(createdService.Spec.ClusterIP).To(BeEmpty())
-				Expect(createdService.Spec.Type).To(Equal(k8sv1.ServiceTypeClusterIP))
-				Expect(createdService.Spec.IPFamilies).To(BeEmpty())
-				Expect(createdService.Spec.ExternalIPs).To(BeEmpty())
-				Expect(createdService.Spec.IPFamilyPolicy).To(BeNil())
+				expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"Ports": ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+						"Port":     Equal(servicePort),
+						"Protocol": Equal(k8sv1.ProtocolTCP),
+					})),
+					"ClusterIP":      BeEmpty(),
+					"Type":           Equal(k8sv1.ServiceTypeClusterIP),
+					"IPFamilies":     BeEmpty(),
+					"ExternalIPs":    BeEmpty(),
+					"IPFamilyPolicy": BeNil(),
+				}))
 			}
 		})
 
@@ -263,11 +259,12 @@ var _ = Describe("Expose", func() {
 
 			It("to create a service", func() {
 				for resourceType, resourceName := range resources {
-					err := runCommand(resourceType, resourceName, "--name", serviceName)
+					svn := serviceName + resourceType
+					err := runCommand(resourceType, resourceName, "--name", svn)
 					Expect(err).ToNot(HaveOccurred())
-
-					Expect(createdService.Spec.Ports[0]).To(Equal(k8sv1.ServicePort{Name: "port-1", Protocol: "TCP", Port: 80}))
-					Expect(createdService.Spec.Ports[1]).To(Equal(k8sv1.ServicePort{Name: "port-2", Protocol: "UDP", Port: 81}))
+					expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+						"Ports": ConsistOf(k8sv1.ServicePort{Name: "port-1", Protocol: "TCP", Port: 80}, k8sv1.ServicePort{Name: "port-2", Protocol: "UDP", Port: 81}),
+					}))
 				}
 			})
 		})
@@ -275,30 +272,40 @@ var _ = Describe("Expose", func() {
 		It("creating a service with cluster-ip", func() {
 			const clusterIP = "1.2.3.4"
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr, "--cluster-ip", clusterIP)
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr, "--cluster-ip", clusterIP)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(createdService.Spec.ClusterIP).To(Equal(clusterIP))
+				expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"ClusterIP": Equal(clusterIP),
+				}))
 			}
 		})
 
 		It("creating a service with external-ip", func() {
 			const externalIP = "1.2.3.4"
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr, "--external-ip", externalIP)
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr, "--external-ip", externalIP)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(createdService.Spec.ExternalIPs).To(ConsistOf(externalIP))
+				expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"ExternalIPs": ConsistOf(externalIP),
+				}))
 			}
 		})
 
 		DescribeTable("creating a service", func(protocol k8sv1.Protocol) {
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr, "--protocol", string(protocol))
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr, "--protocol", string(protocol))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(createdService.Spec.Ports).To(HaveLen(1))
-				Expect(createdService.Spec.Ports[0].Protocol).To(Equal(protocol))
+				expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"Ports": ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+						"Protocol": Equal(protocol),
+					})),
+				}))
 			}
 		},
 			Entry("with protocol TCP", k8sv1.ProtocolTCP),
@@ -307,11 +314,15 @@ var _ = Describe("Expose", func() {
 
 		DescribeTable("creating a service", func(targetPort string, expected intstr.IntOrString) {
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr, "--target-port", targetPort)
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr, "--target-port", targetPort)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(createdService.Spec.Ports).To(HaveLen(1))
-				Expect(createdService.Spec.Ports[0].TargetPort).To(Equal(expected))
+				expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"Ports": ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+						"TargetPort": Equal(expected),
+					})),
+				}))
 			}
 		},
 			Entry("with target-port", "8000", intstr.IntOrString{Type: intstr.Int, IntVal: 8000}),
@@ -320,11 +331,15 @@ var _ = Describe("Expose", func() {
 
 		DescribeTable("creating a service", func(serviceType k8sv1.ServiceType) {
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr, "--type", string(serviceType))
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr, "--type", string(serviceType))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(createdService.Spec.Ports).To(HaveLen(1))
-				Expect(createdService.Spec.Ports[0].Port).To(Equal(servicePort))
+				expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"Ports": ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+						"Port": Equal(servicePort),
+					})),
+				}))
 			}
 		},
 			Entry("with type ClusterIP", k8sv1.ServiceTypeClusterIP),
@@ -335,24 +350,34 @@ var _ = Describe("Expose", func() {
 		It("creating a service with named port", func() {
 			const portName = "test-port"
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr, "--port-name", portName)
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr, "--port-name", portName)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(createdService.Spec.Ports).To(HaveLen(1))
-				Expect(createdService.Spec.Ports[0].Name).To(Equal(portName))
+				expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"Ports": ConsistOf(gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+						"Name": Equal(portName),
+					})),
+				}))
 			}
 		})
 
 		DescribeTable("creating a service selecting a suitable default IPFamilyPolicy", func(ipFamily string, ipFamilyPolicy *k8sv1.IPFamilyPolicy, expected ...k8sv1.IPFamily) {
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr, "--ip-family", ipFamily)
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr, "--ip-family", ipFamily)
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(createdService.Spec.IPFamilies).To(Equal(expected))
 				if ipFamilyPolicy != nil {
-					Expect(*createdService.Spec.IPFamilyPolicy).To(Equal(*ipFamilyPolicy))
+					expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+						"IPFamilies":     Equal(expected),
+						"IPFamilyPolicy": gstruct.PointTo(Equal(*ipFamilyPolicy)),
+					}))
 				} else {
-					Expect(createdService.Spec.IPFamilyPolicy).To(BeNil())
+					expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+						"IPFamilies":     Equal(expected),
+						"IPFamilyPolicy": BeNil(),
+					}))
 				}
 			}
 		},
@@ -364,10 +389,13 @@ var _ = Describe("Expose", func() {
 
 		DescribeTable("creating a service", func(ipFamilyPolicy k8sv1.IPFamilyPolicy) {
 			for resourceType, resourceName := range resources {
-				err := runCommand(resourceType, resourceName, "--name", serviceName, "--port", servicePortStr, "--ip-family-policy", string(ipFamilyPolicy))
+				svn := serviceName + resourceType
+				err := runCommand(resourceType, resourceName, "--name", svn, "--port", servicePortStr, "--ip-family-policy", string(ipFamilyPolicy))
 				Expect(err).ToNot(HaveOccurred())
 
-				Expect(*createdService.Spec.IPFamilyPolicy).To(Equal(ipFamilyPolicy))
+				expectService(svn, gstruct.MatchFields(gstruct.IgnoreExtras, gstruct.Fields{
+					"IPFamilyPolicy": gstruct.PointTo(Equal(ipFamilyPolicy)),
+				}))
 			}
 		},
 			Entry("with IPFamilyPolicy SingleStack", k8sv1.IPFamilyPolicySingleStack),
