@@ -16,13 +16,17 @@
  * Copyright The KubeVirt Authors
  *
  */
+
 package testing
 
 import (
+	"github.com/google/uuid"
 	k8sv1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/tools/cache"
 
-	"github.com/google/uuid"
+	. "github.com/onsi/gomega"
 	"k8s.io/apimachinery/pkg/types"
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/api"
@@ -100,4 +104,41 @@ func DefaultVirtualMachineWithNames(started bool, vmName string, vmiName string)
 
 func DefaultVirtualMachine(started bool) (*v1.VirtualMachine, *v1.VirtualMachineInstance) {
 	return DefaultVirtualMachineWithNames(started, "testvmi", "testvmi")
+}
+
+type ControllerTest interface {
+	Execute() bool
+}
+
+type ControllerExecutor struct {
+	ControllerTest
+	stores []cache.Store
+}
+
+func NewControllerExecutor(controller ControllerTest, stores ...cache.Store) *ControllerExecutor {
+	return &ControllerExecutor{
+		controller,
+		stores,
+	}
+}
+
+func (c *ControllerExecutor) SanityExecute() {
+	var listOfObjects [][]interface{}
+
+	for _, store := range c.stores {
+		listOfObjects = append(listOfObjects, deepCopyList(store.List()))
+	}
+
+	c.Execute()
+
+	for i, objects := range listOfObjects {
+		ExpectWithOffset(1, c.stores[i].List()).To(ConsistOf(objects...))
+	}
+}
+
+func deepCopyList(objects []interface{}) []interface{} {
+	for i := range objects {
+		objects[i] = objects[i].(runtime.Object).DeepCopyObject()
+	}
+	return objects
 }
