@@ -274,13 +274,14 @@ func (c *Controller) execute(key string) error {
 		return nil
 	}
 	vmi := obj.(*virtv1.VirtualMachineInstance)
+	vmi = vmi.DeepCopy()
 
 	logger := log.Log.Object(vmi)
 
 	// this must be first step in execution. Writing the object
 	// when api version changes ensures our api stored version is updated.
 	if !controller.ObservedLatestApiVersionAnnotation(vmi) {
-		vmi := vmi.DeepCopy()
+		//vmi := vmi.DeepCopy()
 		controller.SetLatestApiVersionAnnotation(vmi)
 		key := controller.VirtualMachineInstanceKey(vmi)
 		c.vmiExpectations.SetExpectations(key, 1, 0)
