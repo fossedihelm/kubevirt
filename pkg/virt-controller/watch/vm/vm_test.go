@@ -15,7 +15,6 @@ import (
 	appsv1 "k8s.io/api/apps/v1"
 	authorizationv1 "k8s.io/api/authorization/v1"
 	k8sv1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/equality"
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/api/resource"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -67,6 +66,7 @@ var _ = Describe("VirtualMachine", func() {
 	Context("One valid VirtualMachine controller given", func() {
 
 		var controller *Controller
+		var controllerExecutor *watchtesting.ControllerExecutor
 		var recorder *record.FakeRecorder
 		var mockQueue *testutils.MockWorkQueue
 		var cdiClient *cdifake.Clientset
@@ -172,6 +172,9 @@ var _ = Describe("VirtualMachine", func() {
 			virtClient.EXPECT().AppsV1().Return(k8sClient.AppsV1()).AnyTimes()
 			virtClient.EXPECT().CoreV1().Return(k8sClient.CoreV1()).AnyTimes()
 			virtClient.EXPECT().AuthorizationV1().Return(k8sClient.AuthorizationV1()).AnyTimes()
+			controllerExecutor = watchtesting.NewControllerExecutor(controller,
+				controller.vmiIndexer, controller.vmIndexer, controller.dataSourceStore, controller.dataVolumeStore,
+				controller.namespaceStore, controller.pvcStore, controller.crIndexer)
 		})
 
 		// TODO: We need to make sure the action was triggered
@@ -308,36 +311,6 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(controller.vmIndexer.Add(vm)).To(Succeed())
 		}
 
-		deepCopyList := func(objects []interface{}) []interface{} {
-			for i := range objects {
-				objects[i] = objects[i].(runtime.Object).DeepCopyObject()
-			}
-			return objects
-		}
-
-		sanityExecute := func(vm *v1.VirtualMachine) {
-			added := vm.DeepCopy()
-
-			stores := []cache.Store{
-				controller.vmiIndexer, controller.vmIndexer, controller.dataSourceStore, controller.dataVolumeStore,
-				controller.namespaceStore, controller.pvcStore, controller.crIndexer,
-			}
-
-			listOfObjects := [][]interface{}{}
-
-			for _, store := range stores {
-				listOfObjects = append(listOfObjects, deepCopyList(store.List()))
-			}
-
-			controller.Execute()
-
-			Expect(equality.Semantic.DeepEqual(vm, added)).To(BeTrue(), "A cached VM was modified")
-
-			for i, objects := range listOfObjects {
-				ExpectWithOffset(1, stores[i].List()).To(ConsistOf(objects...))
-			}
-		}
-
 		It("should update conditions when failed creating DataVolume for virtualMachineInstance", func() {
 			vm, _ := watchtesting.DefaultVirtualMachine(true)
 			vm.Spec.Template.Spec.Volumes = append(vm.Spec.Template.Spec.Volumes, v1.Volume{
@@ -359,7 +332,7 @@ var _ = Describe("VirtualMachine", func() {
 
 			shouldFailDataVolumeCreationNoResourceFound()
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, FailedDataVolumeCreateReason)
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -420,7 +393,7 @@ var _ = Describe("VirtualMachine", func() {
 			createCount := 0
 			shouldExpectDataVolumeCreation(vm.UID, map[string]string{"kubevirt.io/created-by": string(vm.UID), "my": "label"}, map[string]string{"my": "annotation"}, &createCount)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			Expect(createCount).To(Equal(1))
 			testutils.ExpectEvent(recorder, SuccessfulDataVolumeCreateReason)
 
@@ -531,7 +504,7 @@ var _ = Describe("VirtualMachine", func() {
 					addVolumeReactor(virtFakeClient)
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -578,7 +551,7 @@ var _ = Describe("VirtualMachine", func() {
 					addVolumeFailureReactor(virtFakeClient)
 
 					By("Not expecting to see a status update")
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					By("Expecting to not clear volume requests")
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -615,7 +588,7 @@ var _ = Describe("VirtualMachine", func() {
 					By("Simulate update failure")
 					failVMSpecUpdate(virtFakeClient)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					By("Expecting Volume request not to be cleared")
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -646,7 +619,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -680,7 +653,7 @@ var _ = Describe("VirtualMachine", func() {
 					By("Simulate a conflict on Update")
 					failVMSpecUpdate(virtFakeClient)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
 					Expect(vm.Spec.Template.Spec.Volumes).To(BeEmpty())
@@ -737,7 +710,7 @@ var _ = Describe("VirtualMachine", func() {
 					By("Simulate a un-hotplug failure")
 					removeVolumeFailureReactor(virtFakeClient)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -783,7 +756,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -831,7 +804,7 @@ var _ = Describe("VirtualMachine", func() {
 					By("Simulate a conflict on VM update")
 					failVMSpecUpdate(virtFakeClient)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -880,7 +853,7 @@ var _ = Describe("VirtualMachine", func() {
 					removeVolumeReactor(virtFakeClient)
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -935,7 +908,7 @@ var _ = Describe("VirtualMachine", func() {
 					})
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
 				Expect(vm.Status.VolumeRequests).To(BeEmpty())
@@ -975,7 +948,7 @@ var _ = Describe("VirtualMachine", func() {
 					})
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
 				Expect(vm.Status.VolumeRequests).To(BeEmpty())
@@ -1034,7 +1007,7 @@ var _ = Describe("VirtualMachine", func() {
 
 			shouldExpectDataVolumeDeletion(&deletionCount)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			Expect(deletionCount).To(Equal(0))
 			testutils.ExpectEvent(recorder, virtcontroller.FailedDataVolumeImportReason)
@@ -1084,7 +1057,7 @@ var _ = Describe("VirtualMachine", func() {
 			controller.dataVolumeStore.Add(existingDataVolume1)
 			controller.dataVolumeStore.Add(existingDataVolume2)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, virtcontroller.FailedDataVolumeImportReason)
 		})
@@ -1136,7 +1109,7 @@ var _ = Describe("VirtualMachine", func() {
 			controller.dataVolumeStore.Add(existingDataVolume1)
 			controller.dataVolumeStore.Add(existingDataVolume2)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, virtcontroller.FailedDataVolumeImportReason)
 		})
@@ -1165,7 +1138,7 @@ var _ = Describe("VirtualMachine", func() {
 			shouldExpectDataVolumeCreation(vm.UID, map[string]string{"kubevirt.io/created-by": string(vm.UID)}, nil, pointer.P(0))
 
 			addVirtualMachine(vm)
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDataVolumeCreateReason)
 
 			_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -1177,7 +1150,7 @@ var _ = Describe("VirtualMachine", func() {
 
 			controller.dataVolumeStore.Add(dv)
 			controller.addDataVolume(dv)
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			Expect(virtFakeClient.Actions()).To(WithTransform(func(actions []testing.Action) []testing.Action {
 				var patchActions []testing.Action
@@ -1235,7 +1208,7 @@ var _ = Describe("VirtualMachine", func() {
 			addVirtualMachine(vm)
 			controller.dataVolumeStore.Add(existingDataVolume)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -1277,7 +1250,7 @@ var _ = Describe("VirtualMachine", func() {
 
 			controller.dataVolumeStore.Add(existingDataVolume)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -1322,7 +1295,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, common.SuccessfulDeleteVirtualMachineReason)
 
 			_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -1373,7 +1346,7 @@ var _ = Describe("VirtualMachine", func() {
 			createCount := 0
 			shouldExpectDataVolumeCreation(vm.UID, map[string]string{"kubevirt.io/created-by": string(vm.UID)}, map[string]string{}, &createCount)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			if shouldCreate {
 				Expect(createCount).To(Equal(2))
 				testutils.ExpectEvent(recorder, SuccessfulDataVolumeCreateReason)
@@ -1432,7 +1405,7 @@ var _ = Describe("VirtualMachine", func() {
 				initFunc()
 			}
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			Expect(createCount).To(Equal(expectedCreations))
 			if expectedCreations > 0 {
 				testutils.ExpectEvent(recorder, SuccessfulDataVolumeCreateReason)
@@ -1472,7 +1445,7 @@ var _ = Describe("VirtualMachine", func() {
 			createCount := 0
 			shouldExpectDataVolumeCreationPriorityClass(vm.UID, map[string]string{"kubevirt.io/created-by": string(vm.UID)}, map[string]string{}, expectedPriorityClass, &createCount)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 			Expect(createCount).To(Equal(1))
 			testutils.ExpectEvent(recorder, SuccessfulDataVolumeCreateReason)
 		},
@@ -1499,7 +1472,7 @@ var _ = Describe("VirtualMachine", func() {
 
 				shouldExpectVMIFinalizerRemoval()
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				testutils.ExpectEvent(recorder, common.SuccessfulDeleteVirtualMachineReason)
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -1535,7 +1508,7 @@ var _ = Describe("VirtualMachine", func() {
 
 				shouldExpectVMIFinalizerRemoval()
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				testutils.ExpectEvent(recorder, common.SuccessfulDeleteVirtualMachineReason)
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -1576,7 +1549,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -1612,7 +1585,7 @@ var _ = Describe("VirtualMachine", func() {
 
 				shouldExpectVMIFinalizerRemoval()
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -1873,7 +1846,7 @@ var _ = Describe("VirtualMachine", func() {
 					return true, "", nil
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				if fail {
 					Expect(createCount).To(Equal(0))
 					testutils.ExpectEvent(recorder, UnauthorizedDataVolumeCreateReason)
@@ -1905,7 +1878,7 @@ var _ = Describe("VirtualMachine", func() {
 			vmRevision := createVMRevision(vm)
 			expectControllerRevisionCreation(vmRevision)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			//TODO expect update status is called
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -1935,7 +1908,7 @@ var _ = Describe("VirtualMachine", func() {
 			expectControllerRevisionDelete(oldVMRevision)
 			expectControllerRevisionCreation(vmRevision)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			//TODO expect update status is called
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -1976,7 +1949,7 @@ var _ = Describe("VirtualMachine", func() {
 
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				//TODO expect update status is called
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -2388,7 +2361,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).ToNot(HaveOccurred())
 					controller.vmiIndexer.Add(vmi)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -2503,7 +2476,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2535,7 +2508,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2559,7 +2532,7 @@ var _ = Describe("VirtualMachine", func() {
 			addVirtualMachine(vm)
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2578,7 +2551,7 @@ var _ = Describe("VirtualMachine", func() {
 			addVirtualMachine(vm)
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2623,7 +2596,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, common.SuccessfulDeleteVirtualMachineReason)
 			_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -2639,7 +2612,7 @@ var _ = Describe("VirtualMachine", func() {
 
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2657,7 +2630,7 @@ var _ = Describe("VirtualMachine", func() {
 			addVirtualMachine(vm)
 
 			//TODO Expect only update status, not Patch on vmInterface
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should delete VirtualMachineInstance when VirtualMachine marked for deletion", func() {
@@ -2672,7 +2645,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, common.SuccessfulDeleteVirtualMachineReason)
 
@@ -2689,7 +2662,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2711,7 +2684,7 @@ var _ = Describe("VirtualMachine", func() {
 
 			shouldExpectVMIFinalizerRemoval()
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 		},
 
@@ -2728,7 +2701,7 @@ var _ = Describe("VirtualMachine", func() {
 			addVirtualMachine(vm)
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should ignore non-matching VMIs", func() {
@@ -2746,7 +2719,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(nonMatchingVMI)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 
@@ -2766,7 +2739,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vmi, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -2812,7 +2785,7 @@ var _ = Describe("VirtualMachine", func() {
 				return true, dv, nil
 			})
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should detect that it has nothing to do beside updating the status", func() {
@@ -2823,7 +2796,7 @@ var _ = Describe("VirtualMachine", func() {
 			addVirtualMachine(vm)
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should add a fail condition if start up fails", func() {
@@ -2836,7 +2809,7 @@ var _ = Describe("VirtualMachine", func() {
 			virtFakeClient.PrependReactor("create", "virtualmachineinstances", func(action testing.Action) (handled bool, ret runtime.Object, err error) {
 				return true, &v1.VirtualMachineInstance{}, fmt.Errorf("some random failure")
 			})
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2868,7 +2841,7 @@ var _ = Describe("VirtualMachine", func() {
 				return true, nil, fmt.Errorf("some random failure")
 			})
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2902,7 +2875,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -2997,7 +2970,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -3033,7 +3006,7 @@ var _ = Describe("VirtualMachine", func() {
 
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -3065,7 +3038,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -3094,7 +3067,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).ToNot(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -3118,7 +3091,7 @@ var _ = Describe("VirtualMachine", func() {
 			virtFakeClient.PrependReactor("delete", "virtualmachineinstances", func(action testing.Action) (handled bool, ret runtime.Object, err error) {
 				return true, nil, fmt.Errorf("some random failure")
 			})
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(Succeed())
@@ -3147,7 +3120,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -3162,7 +3135,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -3179,7 +3152,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -3196,7 +3169,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -3263,7 +3236,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).NotTo(HaveOccurred())
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3294,7 +3267,7 @@ var _ = Describe("VirtualMachine", func() {
 					Phase:     v1.MemoryDumpInProgress,
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3341,7 +3314,7 @@ var _ = Describe("VirtualMachine", func() {
 					FileName:       &vmi.Status.VolumeStatus[0].MemoryDumpVolume.TargetFileName,
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3385,7 +3358,7 @@ var _ = Describe("VirtualMachine", func() {
 					EndTimestamp: &now,
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3437,7 +3410,7 @@ var _ = Describe("VirtualMachine", func() {
 				// TODO: convert this to action check
 				expectPVCAnnotationUpdate(expectedAnnotation, pvcAnnotationUpdated)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vmi, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
@@ -3482,7 +3455,7 @@ var _ = Describe("VirtualMachine", func() {
 					EndTimestamp: &now,
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3502,7 +3475,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).To(Succeed())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3521,7 +3494,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).To(Succeed())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3555,7 +3528,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).To(Succeed())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3584,7 +3557,7 @@ var _ = Describe("VirtualMachine", func() {
 
 				shouldExpectVMIFinalizerRemoval()
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3610,7 +3583,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).To(Succeed())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
@@ -3630,7 +3603,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
 				Expect(vm.Status.PrintableStatus).To(Equal(v1.VirtualMachineStatusStarting))
@@ -3656,7 +3629,7 @@ var _ = Describe("VirtualMachine", func() {
 					controller.vmiIndexer.Add(vmi)
 				}
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -3785,7 +3758,7 @@ var _ = Describe("VirtualMachine", func() {
 					}
 					Expect(controller.pvcStore.Add(&pvc)).To(Succeed())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					if running {
 						_, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
@@ -3816,7 +3789,7 @@ var _ = Describe("VirtualMachine", func() {
 						})
 						controller.dataVolumeStore.Add(dv)
 
-						sanityExecute(vm)
+						controllerExecutor.SanityExecute()
 
 						_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vmi.Name, metav1.GetOptions{})
 						matcher := MatchError(ContainSubstring("not found"))
@@ -3844,7 +3817,7 @@ var _ = Describe("VirtualMachine", func() {
 					dvFunc(dv)
 					controller.dataVolumeStore.Add(dv)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
 					Expect(vm.Status.PrintableStatus).To(Equal(v1.VirtualMachineStatusDataVolumeError))
@@ -3882,7 +3855,7 @@ var _ = Describe("VirtualMachine", func() {
 					})
 					controller.dataVolumeStore.Add(dv)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
 					Expect(vm.Status.PrintableStatus).To(Equal(v1.VirtualMachineStatusProvisioning))
@@ -3925,7 +3898,7 @@ var _ = Describe("VirtualMachine", func() {
 					controller.dataVolumeStore.Add(dv1)
 					controller.dataVolumeStore.Add(dv2)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -3964,7 +3937,7 @@ var _ = Describe("VirtualMachine", func() {
 					}
 					Expect(controller.pvcStore.Add(&pvc)).To(Succeed())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err := virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -3987,7 +3960,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -4008,7 +3981,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -4033,7 +4006,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -4070,7 +4043,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).NotTo(HaveOccurred())
 					controller.vmiIndexer.Add(vmi)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4100,7 +4073,7 @@ var _ = Describe("VirtualMachine", func() {
 					addVirtualMachine(vm)
 					controller.vmiIndexer.Add(vmi)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4116,7 +4089,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4142,7 +4115,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -4159,7 +4132,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -4178,7 +4151,7 @@ var _ = Describe("VirtualMachine", func() {
 					addVirtualMachine(vm)
 					controller.vmiIndexer.Add(vmi)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4217,7 +4190,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 				controller.vmiIndexer.Add(vmi)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
@@ -4365,7 +4338,7 @@ var _ = Describe("VirtualMachine", func() {
 					expectedRevision, err := instancetype.CreateControllerRevision(vm, instancetypeObj)
 					Expect(err).ToNot(HaveOccurred())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -4411,7 +4384,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -4536,7 +4509,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -4568,7 +4541,7 @@ var _ = Describe("VirtualMachine", func() {
 					expectedRevision, err := instancetype.CreateControllerRevision(vm, clusterInstancetypeObj)
 					Expect(err).ToNot(HaveOccurred())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -4609,7 +4582,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -4638,7 +4611,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -4665,7 +4638,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4693,7 +4666,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4719,7 +4692,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4751,7 +4724,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4786,7 +4759,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -4873,7 +4846,7 @@ var _ = Describe("VirtualMachine", func() {
 					expectedPreferenceRevision, err := instancetype.CreateControllerRevision(vm, preference)
 					Expect(err).ToNot(HaveOccurred())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -4918,7 +4891,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5055,7 +5028,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5085,7 +5058,7 @@ var _ = Describe("VirtualMachine", func() {
 					expectedPreferenceRevision, err := instancetype.CreateControllerRevision(vm, clusterPreference)
 					Expect(err).ToNot(HaveOccurred())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5124,7 +5097,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5152,7 +5125,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5178,7 +5151,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -5204,7 +5177,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -5230,7 +5203,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -5267,7 +5240,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 					Expect(err).To(Succeed())
@@ -5300,7 +5273,7 @@ var _ = Describe("VirtualMachine", func() {
 					expectedPreferenceRevision, err := instancetype.CreateControllerRevision(vm, preference)
 					Expect(err).ToNot(HaveOccurred())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5346,7 +5319,7 @@ var _ = Describe("VirtualMachine", func() {
 					expectedPreferenceRevision, err := instancetype.CreateControllerRevision(vm, autoattachPodInterfacePreference)
 					Expect(err).ToNot(HaveOccurred())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5394,7 +5367,7 @@ var _ = Describe("VirtualMachine", func() {
 					expectedPreferenceRevision, err := instancetype.CreateControllerRevision(vm, preference)
 					Expect(err).ToNot(HaveOccurred())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5427,7 +5400,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5473,7 +5446,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).To(Succeed())
 					addVirtualMachine(vm)
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5518,7 +5491,7 @@ var _ = Describe("VirtualMachine", func() {
 					expectedPreferenceRevision, err := instancetype.CreateControllerRevision(vm, autoattachInputDevicePreference)
 					Expect(err).ToNot(HaveOccurred())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 					Expect(err).NotTo(HaveOccurred())
@@ -5550,7 +5523,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).To(Succeed())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
@@ -5584,7 +5557,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 			Expect(err).To(MatchError(ContainSubstring("not found")))
@@ -5599,7 +5572,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -5623,7 +5596,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).NotTo(HaveOccurred())
 			controller.vmiIndexer.Add(vmi)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -5680,7 +5653,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -5700,7 +5673,7 @@ var _ = Describe("VirtualMachine", func() {
 			Expect(err).To(Succeed())
 			addVirtualMachine(vm)
 
-			sanityExecute(vm)
+			controllerExecutor.SanityExecute()
 
 			vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
 			Expect(err).NotTo(HaveOccurred())
@@ -6321,7 +6294,7 @@ var _ = Describe("VirtualMachine", func() {
 					Expect(err).NotTo(HaveOccurred())
 					Expect(controller.vmiIndexer.Add(vmi)).To(Succeed())
 
-					sanityExecute(vm)
+					controllerExecutor.SanityExecute()
 
 					By("Expecting to see patch for the VMI with new affinity")
 					vmi, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -6624,7 +6597,7 @@ var _ = Describe("VirtualMachine", func() {
 				})
 
 				By("Executing the controller expecting the RestartRequired condition to appear")
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
 				Expect(vm.Status.Conditions).To(restartRequiredMatcher(k8sv1.ConditionTrue))
@@ -6649,7 +6622,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 
 				By("Executing the controller expecting the RestartRequired condition to appear")
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
 				Expect(vm.Status.Conditions).To(restartRequiredMatcher(k8sv1.ConditionTrue), "restart required")
@@ -6674,7 +6647,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 
 				By("Executing the controller expecting the RestartRequired condition to appear")
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
 				Expect(vm.Status.Conditions).To(restartRequiredMatcher(k8sv1.ConditionTrue), "restart required")
@@ -6706,7 +6679,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 
 				By("Executing the controller expecting the RestartRequired condition to appear")
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
 				Expect(vm.Status.Conditions).To(restartRequiredMatcher(k8sv1.ConditionTrue), "restart required")
@@ -6729,7 +6702,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 
 				By("Executing the controller expecting the RestartRequired condition to appear")
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).NotTo(HaveOccurred())
 				Expect(vm.Status.Conditions).To(restartRequiredMatcher(k8sv1.ConditionTrue), "restart required")
@@ -6769,7 +6742,7 @@ var _ = Describe("VirtualMachine", func() {
 				addVirtualMachine(vm)
 
 				By("Executing the controller expecting the RestartRequired condition to appear")
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(Succeed())
 				Expect(vm.Status.Conditions).To(matcher, "restart Required")
@@ -6802,7 +6775,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
@@ -6833,7 +6806,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				// update VM from the store
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -6849,7 +6822,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
@@ -6868,7 +6841,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(MatchError(k8serrors.IsNotFound, "IsNotFound"))
@@ -6880,7 +6853,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 				addVirtualMachine(vm)
 
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vmi, err := virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
@@ -6899,7 +6872,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				addVirtualMachine(vm)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				controller.crIndexer.Add(createVMRevision(vm))
 
@@ -6912,7 +6885,7 @@ var _ = Describe("VirtualMachine", func() {
 				key, err := virtcontroller.KeyFunc(vm)
 				Expect(err).To(Not(HaveOccurred()))
 				controller.Queue.Add(key)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				By("Change RunStrategy to Halted")
 				vm.Spec.RunStrategy = pointer.P(v1.RunStrategyHalted)
@@ -6921,14 +6894,14 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				addVirtualMachine(vm)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				controller.crIndexer.Delete(createVMRevision(vm))
 
 				// let the controller pick up the deletion
 				controller.Queue.Add(key)
 				controller.vmiIndexer.Delete(vmi)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).To(MatchError(k8serrors.IsNotFound, "IsNotFound"))
@@ -6940,7 +6913,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				addVirtualMachine(vm)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				vmi, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
 				Expect(err).ToNot(HaveOccurred())
@@ -6966,7 +6939,7 @@ var _ = Describe("VirtualMachine", func() {
 				Expect(err).ToNot(HaveOccurred())
 
 				addVirtualMachine(vm)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				clearExpectations(vm)
 
 				controller.crIndexer.Add(createVMRevision(vm))
@@ -6978,7 +6951,7 @@ var _ = Describe("VirtualMachine", func() {
 				controller.vmiIndexer.Add(vmi)
 
 				controller.Queue.Add(key)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				clearExpectations(vm)
 
 				// update VM from the store
@@ -6994,7 +6967,7 @@ var _ = Describe("VirtualMachine", func() {
 
 				By("VM should get stopped")
 				addVirtualMachine(vm)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				clearExpectations(vm)
 
 				_, err = virtFakeClient.KubevirtV1().VirtualMachineInstances(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})
@@ -7005,7 +6978,7 @@ var _ = Describe("VirtualMachine", func() {
 				controller.crIndexer.Delete(createVMRevision(vm))
 				controller.vmiIndexer.Delete(vmi)
 				controller.Queue.Add(key)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 				clearExpectations(vm)
 
 				// check for VMI existence
@@ -7024,7 +6997,7 @@ var _ = Describe("VirtualMachine", func() {
 				controller.vmiIndexer.Add(vmi)
 				controller.Queue.Add(key)
 				addVirtualMachine(vm)
-				sanityExecute(vm)
+				controllerExecutor.SanityExecute()
 
 				// update VM from Store
 				vm, err = virtFakeClient.KubevirtV1().VirtualMachines(vm.Namespace).Get(context.TODO(), vm.Name, metav1.GetOptions{})

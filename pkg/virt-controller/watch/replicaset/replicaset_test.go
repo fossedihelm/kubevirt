@@ -47,6 +47,7 @@ var _ = Describe("Replicaset", func() {
 		var rsInformer cache.SharedIndexInformer
 		var stop chan struct{}
 		var controller *Controller
+		var controllerExecutor *watchtesting.ControllerExecutor
 		var recorder *record.FakeRecorder
 		var mockQueue *testutils.MockWorkQueue
 		var vmiFeeder *testutils.VirtualMachineFeeder
@@ -79,6 +80,7 @@ var _ = Describe("Replicaset", func() {
 
 			testing.PrependGenerateNameCreateReactor(&virtClientset.Fake, "virtualmachineinstances")
 			syncCaches(stop)
+			controllerExecutor = watchtesting.NewControllerExecutor(controller, controller.vmiIndexer, controller.vmiRSIndexer)
 		})
 
 		AfterEach(func() {
@@ -155,7 +157,7 @@ var _ = Describe("Replicaset", func() {
 			rs, _ := defaultReplicaSet(3)
 			addReplicaSet(rs)
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, HaveLen(3))
 			testutils.ExpectEvents(recorder,
@@ -176,7 +178,7 @@ var _ = Describe("Replicaset", func() {
 			}
 			addReplicaSet(rs)
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, HaveLen(3))
 			expectReplicasAndReadyReplicas(rs.Name, 0, 0)
@@ -196,7 +198,7 @@ var _ = Describe("Replicaset", func() {
 			rs.Status.Replicas = 1
 			addReplicaSet(rs)
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, BeEmpty())
 			expectReplicasAndReadyReplicas(rs.Name, 0, 0)
@@ -213,7 +215,7 @@ var _ = Describe("Replicaset", func() {
 			rs, _ := defaultReplicaSet(15)
 			addReplicaSet(rs)
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, HaveLen(10))
 			expectReplicasAndReadyReplicas(rs.Name, 0, 0)
@@ -244,7 +246,7 @@ var _ = Describe("Replicaset", func() {
 
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			// There will be 7 created vms, 3 are already there and 3 are there but marked for deletion
 			expectVMIReplicas(rs, HaveLen(13))
@@ -266,7 +268,7 @@ var _ = Describe("Replicaset", func() {
 				addVMI(vmi)
 			}
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, HaveLen(5))
 			for x := 0; x < 10; x++ {
@@ -297,7 +299,7 @@ var _ = Describe("Replicaset", func() {
 
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			// There will be 3 are already there and 4 are there but marked for deletion
 			expectVMIReplicas(rs, HaveLen(7))
@@ -317,7 +319,7 @@ var _ = Describe("Replicaset", func() {
 
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			// We still expect three calls to create VMIs, since VirtualMachineInstance does not meet the requirements
 			expectVMIReplicas(rs, HaveLen(3))
@@ -335,7 +337,7 @@ var _ = Describe("Replicaset", func() {
 			addReplicaSet(rs)
 			addVMI(vmi)
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, BeEmpty())
 			expectReplicasAndReadyReplicas(rs.Name, 1, 0)
@@ -349,7 +351,7 @@ var _ = Describe("Replicaset", func() {
 			addReplicaSet(rs)
 			addVMI(vmi)
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			vmiList, err := virtClientset.KubevirtV1().VirtualMachineInstances(metav1.NamespaceDefault).List(context.TODO(), metav1.ListOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -369,7 +371,7 @@ var _ = Describe("Replicaset", func() {
 
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			Expect(virtClientset.Actions()).To(BeEmpty())
 		})
@@ -385,7 +387,7 @@ var _ = Describe("Replicaset", func() {
 			addReplicaSet(rs)
 			addVMI(vmi)
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			updatedRS, err := virtClientset.KubevirtV1().VirtualMachineInstanceReplicaSets(metav1.NamespaceDefault).Get(context.TODO(), rs.Name, metav1.GetOptions{})
 			Expect(err).ToNot(HaveOccurred())
@@ -407,7 +409,7 @@ var _ = Describe("Replicaset", func() {
 			// First make sure that we don't have to do anything
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 			Expect(virtClientset.Actions()).To(BeEmpty())
 
 			// Move one VirtualMachineInstance to a final state
@@ -417,7 +419,7 @@ var _ = Describe("Replicaset", func() {
 			vmiFeeder.Modify(modifiedVMI)
 
 			// Run the controller again
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			_, err := virtClientset.KubevirtV1().VirtualMachineInstances(metav1.NamespaceDefault).Get(context.TODO(), vmi.ObjectMeta.Name, metav1.GetOptions{})
 			Expect(err).To(MatchError(k8serrors.IsNotFound, "IsNotFound"))
@@ -436,7 +438,7 @@ var _ = Describe("Replicaset", func() {
 			// First make sure that we don't have to do anything
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 			Expect(virtClientset.Actions()).To(BeEmpty())
 
 			// Move one VirtualMachineInstance to a final state
@@ -447,7 +449,7 @@ var _ = Describe("Replicaset", func() {
 			vmiFeeder.Modify(modifiedVMI)
 
 			// Run the controller again
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, HaveLen(1))
 			expectReplicasAndReadyReplicas(rs.Name, 1, 1)
@@ -465,7 +467,7 @@ var _ = Describe("Replicaset", func() {
 			// First make sure that we don't have to do anything
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 			Expect(virtClientset.Actions()).To(BeEmpty())
 
 			// Move one VirtualMachineInstance to a final state
@@ -475,7 +477,7 @@ var _ = Describe("Replicaset", func() {
 			vmiFeeder.Modify(modifiedVMI)
 
 			// Run the controller again
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, HaveLen(1))
 			expectReplicasAndReadyReplicas(rs.Name, 1, 0)
@@ -490,7 +492,7 @@ var _ = Describe("Replicaset", func() {
 			// First make sure that we don't have to do anything
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 			Expect(virtClientset.Actions()).To(BeEmpty())
 
 			// Delete one VirtualMachineInstance
@@ -499,7 +501,7 @@ var _ = Describe("Replicaset", func() {
 			vmiFeeder.Delete(vmi)
 
 			// Run the controller again
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectVMIReplicas(rs, HaveLen(1))
 			expectReplicasAndReadyReplicas(rs.Name, 0, 0)
@@ -518,7 +520,7 @@ var _ = Describe("Replicaset", func() {
 			// First make sure that we don't have to do anything
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 			Expect(virtClientset.Actions()).To(BeEmpty())
 
 			// Move one VirtualMachineInstance to a final state
@@ -528,7 +530,7 @@ var _ = Describe("Replicaset", func() {
 			vmiFeeder.Modify(modifiedVMI)
 
 			// Run the cleanFinishedVmis method
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			_, err := virtClientset.KubevirtV1().VirtualMachineInstances(metav1.NamespaceDefault).Get(context.TODO(), vmi.ObjectMeta.Name, metav1.GetOptions{})
 			Expect(err).To(MatchError(k8serrors.IsNotFound, "IsNotFound"))
@@ -557,7 +559,7 @@ var _ = Describe("Replicaset", func() {
 			// First make sure that we don't have to do anything
 			// Clear actions, so we can track what the controller does
 			virtClientset.ClearActions()
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 			Expect(virtClientset.Actions()).To(BeEmpty())
 
 			// Move one VirtualMachineInstance to a final state
@@ -567,7 +569,7 @@ var _ = Describe("Replicaset", func() {
 			vmiFeeder.Modify(modifiedVMI)
 
 			// Run the cleanFinishedVmis method
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			_, err := virtClientset.KubevirtV1().VirtualMachineInstances(metav1.NamespaceDefault).Get(context.TODO(), vmi.ObjectMeta.Name, metav1.GetOptions{})
 			Expect(err).To(MatchError(k8serrors.IsNotFound, "IsNotFound"))
@@ -586,7 +588,7 @@ var _ = Describe("Replicaset", func() {
 
 			failSecondVMIAction("create")
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectReplicasAndReadyReplicas(rs.Name, 1, 0)
 			expectConditions(rs.Name, ContainElement(
@@ -610,7 +612,7 @@ var _ = Describe("Replicaset", func() {
 
 			failSecondVMIAction("delete")
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectReplicasAndReadyReplicas(rs.Name, 2, 0)
 			expectConditions(rs.Name, ContainElement(
@@ -637,7 +639,7 @@ var _ = Describe("Replicaset", func() {
 
 			failSecondVMIAction("delete")
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			Expect(mockQueue.GetRateLimitedEnqueueCount()).To(Equal(1))
 			Expect(mockQueue.Len()).To(Equal(0))
@@ -670,7 +672,7 @@ var _ = Describe("Replicaset", func() {
 
 			failSecondVMIAction("create")
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			expectReplicasAndReadyReplicas(rs.Name, 1, 0)
 			expectConditions(rs.Name, ContainElement(
@@ -698,7 +700,7 @@ var _ = Describe("Replicaset", func() {
 			addReplicaSet(rs)
 			addVMI(vmi)
 
-			controller.Execute()
+			controllerExecutor.SanityExecute()
 
 			Expect(mockQueue.GetRateLimitedEnqueueCount()).To(Equal(0))
 			expectReplicasAndReadyReplicas(rs.Name, 1, 0)

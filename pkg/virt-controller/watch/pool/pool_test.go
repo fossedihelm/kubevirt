@@ -89,6 +89,7 @@ var _ = Describe("Pool", func() {
 		)
 
 		var controller *Controller
+		var controllerExecutor *watchtesting.ControllerExecutor
 		var recorder *record.FakeRecorder
 		var mockQueue *testutils.MockWorkQueue
 		var fakeVirtClient *kubevirtfake.Clientset
@@ -166,6 +167,7 @@ var _ = Describe("Pool", func() {
 				return true, nil, nil
 			})
 			virtClient.EXPECT().AppsV1().Return(k8sClient.AppsV1()).AnyTimes()
+			controllerExecutor = watchtesting.NewControllerExecutor(controller, controller.vmiStore, controller.vmIndexer, controller.poolIndexer, controller.revisionIndexer)
 		})
 
 		addPool := func(pool *poolv1.VirtualMachinePool) {
@@ -235,31 +237,6 @@ var _ = Describe("Pool", func() {
 			})
 		}
 
-		deepCopyList := func(objects []interface{}) []interface{} {
-			for i := range objects {
-				objects[i] = objects[i].(runtime.Object).DeepCopyObject()
-			}
-			return objects
-		}
-
-		sanityExecute := func() {
-			stores := []cache.Store{
-				controller.vmiStore, controller.vmIndexer, controller.poolIndexer, controller.revisionIndexer,
-			}
-
-			listOfObjects := [][]interface{}{}
-
-			for _, store := range stores {
-				listOfObjects = append(listOfObjects, deepCopyList(store.List()))
-			}
-
-			controller.Execute()
-
-			for i, objects := range listOfObjects {
-				ExpectWithOffset(1, stores[i].List()).To(ConsistOf(objects...))
-			}
-		}
-
 		It("should create missing VMs", func() {
 			pool, _ := DefaultPool(3)
 
@@ -269,7 +246,7 @@ var _ = Describe("Pool", func() {
 			expectControllerRevisionCreation(poolRevision)
 			expectVMCreation(HavePrefix(fmt.Sprintf("%s-", pool.Name)))
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
@@ -314,7 +291,7 @@ var _ = Describe("Pool", func() {
 			expectControllerRevisionCreation(newPoolRevision)
 			expectVMUpdate(newPoolRevision.Name)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			Expect(testing.FilterActions(&fakeVirtClient.Fake, "delete", "virtualmachineinstances")).To(BeEmpty())
 		})
@@ -330,7 +307,7 @@ var _ = Describe("Pool", func() {
 			addCR(poolRevision)
 
 			expectControllerRevisionDeletion(poolRevision)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should update VM and VMI with both VM and VMI template change", func() {
@@ -377,7 +354,7 @@ var _ = Describe("Pool", func() {
 				return true, nil, nil
 			})
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, common.SuccessfulDeleteVirtualMachineReason)
 			Expect(testing.FilterActions(&fakeVirtClient.Fake, "delete", "virtualmachineinstances")).To(HaveLen(1))
@@ -397,7 +374,7 @@ var _ = Describe("Pool", func() {
 			addVM(vm)
 			addCR(poolRevision)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should prune unused controller revisions", func() {
@@ -419,7 +396,7 @@ var _ = Describe("Pool", func() {
 			addCR(oldPoolRevision)
 
 			expectControllerRevisionDeletion(oldPoolRevision)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should not create missing VMs when it is paused and add paused condition", func() {
@@ -443,7 +420,7 @@ var _ = Describe("Pool", func() {
 				return true, update.GetObject(), nil
 			})
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, SuccessfulPausedPoolReason)
 			// Expect pool to be updated with paused condition
@@ -477,7 +454,7 @@ var _ = Describe("Pool", func() {
 			poolRevision := createPoolRevision(pool)
 			expectControllerRevisionCreation(poolRevision)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, common.FailedCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, FailedScaleOutReason)
@@ -510,7 +487,7 @@ var _ = Describe("Pool", func() {
 				return true, update.GetObject(), nil
 			})
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should create missing VMs when pool is resumed", func() {
@@ -544,7 +521,7 @@ var _ = Describe("Pool", func() {
 			poolRevision := createPoolRevision(pool)
 			expectControllerRevisionCreation(poolRevision)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
@@ -563,7 +540,7 @@ var _ = Describe("Pool", func() {
 			poolRevision := createPoolRevision(pool)
 			expectControllerRevisionCreation(poolRevision)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			for x := 0; x < 10; x++ {
 				testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
@@ -596,7 +573,7 @@ var _ = Describe("Pool", func() {
 				return true, nil, nil
 			})
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			for x := 0; x < 10; x++ {
 				testutils.ExpectEvent(recorder, common.SuccessfulDeleteVirtualMachineReason)
@@ -634,7 +611,7 @@ var _ = Describe("Pool", func() {
 			fakeVirtClient.Fake.PrependReactor("delete", "virtualmachines", func(action k8stesting.Action) (handled bool, obj runtime.Object, err error) {
 				return true, nil, nil
 			})
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			for x := 0; x < 5; x++ {
 				testutils.ExpectEvent(recorder, common.SuccessfulDeleteVirtualMachineReason)
@@ -660,7 +637,7 @@ var _ = Describe("Pool", func() {
 			poolRevision := createPoolRevision(pool)
 			expectControllerRevisionCreation(poolRevision)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
@@ -688,7 +665,7 @@ var _ = Describe("Pool", func() {
 			poolRevision := createPoolRevision(pool)
 			expectControllerRevisionCreation(poolRevision)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 
@@ -719,7 +696,7 @@ var _ = Describe("Pool", func() {
 			poolRevision := createPoolRevision(pool)
 			expectControllerRevisionCreation(poolRevision)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)
 			testutils.ExpectEvent(recorder, common.SuccessfulCreateVirtualMachineReason)

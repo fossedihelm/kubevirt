@@ -25,11 +25,13 @@ import (
 	"kubevirt.io/kubevirt/pkg/apimachinery/patch"
 	"kubevirt.io/kubevirt/pkg/testutils"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
+	watchtesting "kubevirt.io/kubevirt/pkg/virt-controller/watch/testing"
 )
 
 var _ = Describe("Disruptionbudget", func() {
 
 	var ctrl *gomock.Controller
+	var controllerExecutor *watchtesting.ControllerExecutor
 	var stop chan struct{}
 	var virtClient *kubecli.MockKubevirtClient
 	var vmiSource *framework.FakeControllerSource
@@ -150,38 +152,14 @@ var _ = Describe("Disruptionbudget", func() {
 		})
 		syncCaches(stop)
 
+		controllerExecutor = watchtesting.NewControllerExecutor(controller, controller.vmiStore, controller.pdbIndexer, controller.podIndexer, controller.migrationIndexer)
 	})
-
-	deepCopyList := func(objects []interface{}) []interface{} {
-		for i := range objects {
-			objects[i] = objects[i].(runtime.Object).DeepCopyObject()
-		}
-		return objects
-	}
-
-	sanityExecute := func() {
-		stores := []cache.Store{
-			controller.vmiStore, controller.pdbIndexer, controller.podIndexer, controller.migrationIndexer,
-		}
-
-		listOfObjects := [][]interface{}{}
-
-		for _, store := range stores {
-			listOfObjects = append(listOfObjects, deepCopyList(store.List()))
-		}
-
-		controller.Execute()
-
-		for i, objects := range listOfObjects {
-			ExpectWithOffset(1, stores[i].List()).To(ConsistOf(objects...))
-		}
-	}
 
 	Context("A VirtualMachineInstance given which does not want to live-migrate on evictions", func() {
 
 		It("should do nothing, if no pdb exists", func() {
 			addVirtualMachine(nonMigratableVirtualMachine())
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 		})
 
 		It("should remove the pdb, if it is added to the cache", func() {
@@ -191,7 +169,7 @@ var _ = Describe("Disruptionbudget", func() {
 			pdbFeeder.Add(pdb)
 
 			shouldExpectPDBDeletion(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDeletePodDisruptionBudgetReason)
 		})
 	})
@@ -207,7 +185,7 @@ var _ = Describe("Disruptionbudget", func() {
 			addVirtualMachine(vmi)
 
 			shouldExpectPDBCreation(vmi.UID)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulCreatePodDisruptionBudgetReason)
 		})
 	})
@@ -220,7 +198,7 @@ var _ = Describe("Disruptionbudget", func() {
 			pdb := newPodDisruptionBudget(vmi, 1)
 			pdbFeeder.Add(pdb)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 		},
 			Entry("with LiveMigrate eviction strategy and non-migratable VMI", v1.EvictionStrategyLiveMigrate, nonMigratableVirtualMachine()),
 			Entry("with External eviction strategy and non-migratable VMI", v1.EvictionStrategyExternal, nonMigratableVirtualMachine()),
@@ -236,11 +214,11 @@ var _ = Describe("Disruptionbudget", func() {
 			pdb := newPodDisruptionBudget(vmi, 1)
 			pdbFeeder.Add(pdb)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			vmiFeeder.Delete(vmi)
 			shouldExpectPDBDeletion(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDeletePodDisruptionBudgetReason)
 		},
 			Entry("with LiveMigrate eviction strategy", v1.EvictionStrategyLiveMigrate),
@@ -255,7 +233,7 @@ var _ = Describe("Disruptionbudget", func() {
 			pdbFeeder.Add(pdb)
 
 			shouldExpectPDBDeletion(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDeletePodDisruptionBudgetReason)
 		},
 			Entry("with LiveMigrate eviction strategy", v1.EvictionStrategyLiveMigrate),
@@ -270,18 +248,18 @@ var _ = Describe("Disruptionbudget", func() {
 			pdb := newPodDisruptionBudget(vmi, 1)
 			pdbFeeder.Add(pdb)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			vmiFeeder.Delete(vmi)
 			shouldExpectPDBDeletion(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDeletePodDisruptionBudgetReason)
 
 			pdbFeeder.Delete(pdb)
 			vmi.UID = "45356"
 			vmiFeeder.Add(vmi)
 			shouldExpectPDBCreation(vmi.UID)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			testutils.ExpectEvent(recorder, SuccessfulCreatePodDisruptionBudgetReason)
 		},
@@ -300,7 +278,7 @@ var _ = Describe("Disruptionbudget", func() {
 			addVirtualMachine(vmi)
 
 			shouldExpectPDBDeletion(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDeletePodDisruptionBudgetReason)
 		},
 			Entry("with LiveMigrate eviction strategy", v1.EvictionStrategyLiveMigrate),
@@ -315,10 +293,10 @@ var _ = Describe("Disruptionbudget", func() {
 			vmi.DeletionTimestamp = &now
 			addVirtualMachine(vmi)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			vmiFeeder.Delete(vmi)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 		},
 			Entry("with LiveMigrate eviction strategy", v1.EvictionStrategyLiveMigrate),
 			Entry("with LiveMigrateIfPossible eviction strategy", v1.EvictionStrategyLiveMigrateIfPossible),
@@ -332,12 +310,12 @@ var _ = Describe("Disruptionbudget", func() {
 			pdb := newPodDisruptionBudget(vmi, 1)
 			pdbFeeder.Add(pdb)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			vmi.Spec.EvictionStrategy = nil
 			vmiFeeder.Modify(vmi)
 			shouldExpectPDBDeletion(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDeletePodDisruptionBudgetReason)
 		})
 
@@ -352,7 +330,7 @@ var _ = Describe("Disruptionbudget", func() {
 			vmiFeeder.Add(vmi)
 
 			shouldExpectPDBDeletion(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDeletePodDisruptionBudgetReason)
 		},
 			Entry("with Succeeded vmi phase", v1.Succeeded),
@@ -365,7 +343,7 @@ var _ = Describe("Disruptionbudget", func() {
 			addVirtualMachine(vmi)
 
 			shouldExpectPDBCreation(vmi.UID)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulCreatePodDisruptionBudgetReason)
 		},
 			Entry("with LiveMigrate eviction strategy", v1.EvictionStrategyLiveMigrate),
@@ -379,11 +357,11 @@ var _ = Describe("Disruptionbudget", func() {
 			addVirtualMachine(vmi)
 			pdb := newPodDisruptionBudget(vmi, 1)
 			pdbFeeder.Add(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			shouldExpectPDBCreation(vmi.UID)
 			pdbFeeder.Delete(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulCreatePodDisruptionBudgetReason)
 		},
 			Entry("with LiveMigrate eviction strategy", v1.EvictionStrategyLiveMigrate),
@@ -397,13 +375,13 @@ var _ = Describe("Disruptionbudget", func() {
 			addVirtualMachine(vmi)
 			pdb := newPodDisruptionBudget(vmi, 1)
 			pdbFeeder.Add(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 
 			shouldExpectPDBCreation(vmi.UID)
 			newPdb := pdb.DeepCopy()
 			newPdb.OwnerReferences = nil
 			pdbFeeder.Modify(newPdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulCreatePodDisruptionBudgetReason)
 		},
 			Entry("with LiveMigrate eviction strategy", v1.EvictionStrategyLiveMigrate),
@@ -428,7 +406,7 @@ var _ = Describe("Disruptionbudget", func() {
 
 			shouldExpectPDBPatch(vmi)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulUpdatePodDisruptionBudgetReason)
 		})
 
@@ -445,7 +423,7 @@ var _ = Describe("Disruptionbudget", func() {
 
 			shouldExpectPDBPatch(vmi)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulUpdatePodDisruptionBudgetReason)
 		})
 
@@ -462,7 +440,7 @@ var _ = Describe("Disruptionbudget", func() {
 			pdbFeeder.Add(pdb)
 			addMigration(vmim)
 
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 		})
 
 		DescribeTable("should delete a PDB created by an old migration-controller", func(evictionStrategy v1.EvictionStrategy) {
@@ -478,7 +456,7 @@ var _ = Describe("Disruptionbudget", func() {
 			pdbFeeder.Add(pdb)
 
 			shouldExpectPDBDeletion(pdb)
-			sanityExecute()
+			controllerExecutor.SanityExecute()
 			testutils.ExpectEvent(recorder, SuccessfulDeletePodDisruptionBudgetReason)
 		},
 			Entry("with LiveMigrate eviction strategy", v1.EvictionStrategyLiveMigrate),
