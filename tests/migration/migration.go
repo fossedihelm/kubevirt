@@ -1877,6 +1877,13 @@ var _ = SIGMigrationDescribe("VM Live Migration", func() {
 			})
 
 			It("old finalized migrations should get garbage collected", func() {
+				kvConfig := getCurrentKvConfig(virtClient)
+				kvConfig.DeveloperConfiguration.LogVerbosity = &v1.LogVerbosity{
+					VirtController: 9,
+					VirtHandler:    9,
+					VirtLauncher:   9,
+				}
+				tests.UpdateKubeVirtConfigValueAndWait(kvConfig)
 				vmi := tests.NewRandomFedoraVMI()
 				vmi.Spec.Domain.Resources.Requests[k8sv1.ResourceMemory] = resource.MustParse("1Gi")
 
@@ -1914,6 +1921,7 @@ var _ = SIGMigrationDescribe("VM Live Migration", func() {
 				migrations, err := virtClient.VirtualMachineInstanceMigration(vmi.Namespace).List(&metav1.ListOptions{})
 				Expect(err).ToNot(HaveOccurred())
 				Expect(migrations.Items).To(HaveLen(5))
+				Fail("Failing on purpose")
 			})
 
 			It("[test_id:6979]Target pod should exit after failed migration", func() {
