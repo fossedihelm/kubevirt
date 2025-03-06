@@ -19,5 +19,14 @@
 
 set -e
 
-covered_paths=$(cat hack/lint-paths.txt | tr '\n' ' ')
+LINT_PATH_SCRIPT="./lint-paths/lint-paths.sh"
+
+covered_paths=$( "$LINT_PATH_SCRIPT" 2>&1 )
+exit_code=$?
+
+if [[ $exit_code -ne 0 ]]; then
+  echo "Error: '$LINT_PATH_SCRIPT' failed with exit code $exit_code"
+  exit 1
+fi
+
 gofumpt -l -w -extra ${covered_paths}

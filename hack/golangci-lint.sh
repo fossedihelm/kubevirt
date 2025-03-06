@@ -18,12 +18,15 @@
 #
 
 set -e
+LINT_PATH_SCRIPT="./lint-paths/lint-paths.sh"
 
-paths=""
-while IFS= read -r line; do
-    # read directory from the file and append a wildcard
-    paths+="${line}/... "
-done <hack/lint-paths.txt
+paths=$( "$LINT_PATH_SCRIPT /.." 2>&1 )
+exit_code=$?
+
+if [[ $exit_code -ne 0 ]]; then
+  echo "Error: '$LINT_PATH_SCRIPT' failed with exit code $exit_code"
+  exit 1
+fi
 
 golangci-lint run --timeout 20m --verbose ${paths}
 golangci-lint run --disable-all -E ginkgolinter --timeout 10m --verbose --no-config \
