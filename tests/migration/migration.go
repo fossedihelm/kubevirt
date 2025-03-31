@@ -1233,7 +1233,7 @@ var _ = SIGMigrationDescribe("VM Live Migration", func() {
 
 		Context("[Serial] migration to nonroot", Serial, func() {
 			var dv *cdiv1.DataVolume
-			size := "256Mi"
+			size := "4Gi"
 			var clusterIsRoot bool
 
 			BeforeEach(func() {

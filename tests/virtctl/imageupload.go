@@ -49,7 +49,7 @@ const (
 var _ = Describe("[sig-storage][Serial][virtctl]ImageUpload", decorators.SigStorage, Serial, func() {
 	var kubectlCmd *exec.Cmd
 
-	pvcSize := "100Mi"
+	pvcSize := "4Gi"
 
 	var virtClient kubecli.KubevirtClient
 
