@@ -33,9 +33,10 @@ import (
 	v1 "kubevirt.io/api/core/v1"
 	virtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/kubecli"
-	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
 	k8serrors "k8s.io/apimachinery/pkg/api/errors"
+
+	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
 	"kubevirt.io/kubevirt/pkg/libdv"
 	"kubevirt.io/kubevirt/pkg/libvmi"
@@ -91,8 +92,8 @@ var _ = Describe(SIG("Live Migration across namespaces", decorators.RequiresDece
 
 		By("Starting the VM")
 		vm = libvmops.StartVirtualMachine(vm)
-		vmi = libwait.WaitForVMIPhase(vmi, []v1.VirtualMachineInstancePhase{v1.Running})
-		_, err = libpod.GetPodByVirtualMachineInstance(vmi, vmi.Namespace)
+		startedVMI := libwait.WaitForVMIPhase(vmi, []v1.VirtualMachineInstancePhase{v1.Running})
+		_, err = libpod.GetPodByVirtualMachineInstance(startedVMI, startedVMI.Namespace)
 		Expect(err).NotTo(HaveOccurred())
 
 		return vm
@@ -184,34 +185,22 @@ var _ = Describe(SIG("Live Migration across namespaces", decorators.RequiresDece
 			var targetVM *virtv1.VirtualMachine
 			var migrationID string
 
-			sourceVMI := libvmifact.NewCirros(
-				libvmi.WithNamespace(testsuite.NamespaceTestDefault),
-				libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
-				libvmi.WithNetwork(v1.DefaultPodNetwork()),
-			)
-			targetVMI := sourceVMI.DeepCopy()
-			targetVMI.Namespace = testsuite.NamespaceTestAlternative
+			sourceVMI := generateVMI(testsuite.NamespaceTestDefault, fmt.Sprintf("test-vmi-%s", rand.String(5)))
 			sourceVM := createAndStartVMFromVMISpec(sourceVMI)
 			num := 4
 			for i := 0; i < num; i++ {
+				sourceVMI, err = virtClient.VirtualMachineInstance(sourceVM.Namespace).Get(context.Background(), sourceVM.Name, metav1.GetOptions{})
+				Expect(err).ToNot(HaveOccurred())
 				migrationID = fmt.Sprintf("mig-%s", rand.String(5))
 				var sourceMigration, targetMigration *virtv1.VirtualMachineInstanceMigration
 				var expectedVMI *virtv1.VirtualMachineInstance
 				sourceRunStrategy := sourceVM.Spec.RunStrategy
 				By(fmt.Sprintf("executing a migration, and waiting for finalized state, run %d", i))
-				if i%2 == 0 {
-					// source -> target
-					targetVM = createReceiverVMFromVMISpec(targetVMI)
-					sourceMigration = libmigration.NewSource(sourceVMI.Name, sourceVMI.Namespace, migrationID, connectionURL)
-					targetMigration = libmigration.NewTarget(targetVMI.Name, targetVMI.Namespace, migrationID)
-					expectedVMI = targetVMI
-				} else {
-					// target -> source
-					targetVM = createReceiverVMFromVMISpec(sourceVMI)
-					sourceMigration = libmigration.NewSource(targetVMI.Name, targetVMI.Namespace, migrationID, connectionURL)
-					targetMigration = libmigration.NewTarget(sourceVMI.Name, sourceVMI.Namespace, migrationID)
-					expectedVMI = sourceVMI
-				}
+				targetVMI := generateTargetVMIWithDifferentNS(sourceVMI)
+				targetVM = createReceiverVMFromVMISpec(targetVMI)
+				sourceMigration = libmigration.NewSource(sourceVMI.Name, sourceVMI.Namespace, migrationID, connectionURL)
+				targetMigration = libmigration.NewTarget(targetVMI.Name, targetVMI.Namespace, migrationID)
+				expectedVMI = targetVMI
 				sourceMigration, targetMigration = libmigration.RunDecentralizedMigrationAndExpectToCompleteWithDefaultTimeout(virtClient, sourceMigration, targetMigration)
 				libmigration.ConfirmVMIPostMigration(virtClient, expectedVMI, targetMigration)
 				updateRunStrategy(targetVM, sourceRunStrategy)
@@ -389,6 +378,23 @@ var _ = Describe(SIG("Live Migration across namespaces", decorators.RequiresDece
 		})
 	})
 }))
+
+func generateVMI(namespace, name string) *v1.VirtualMachineInstance {
+	return libvmifact.NewCirros(
+		libvmi.WithName(name),
+		libvmi.WithNamespace(namespace),
+		libvmi.WithInterface(libvmi.InterfaceDeviceWithMasqueradeBinding()),
+		libvmi.WithNetwork(v1.DefaultPodNetwork()),
+	)
+}
+func generateTargetVMIWithDifferentNS(vmi *v1.VirtualMachineInstance) *v1.VirtualMachineInstance {
+	switch vmi.Namespace {
+	case testsuite.NamespaceTestDefault:
+		return generateVMI(testsuite.NamespaceTestAlternative, vmi.Name)
+	default:
+		return generateVMI(testsuite.NamespaceTestDefault, vmi.Name)
+	}
+}
 
 func getKubevirtSynchronizationSyncAddress(virtClient kubecli.KubevirtClient) (string, error) {
 	kv := libkubevirt.GetCurrentKv(virtClient)
