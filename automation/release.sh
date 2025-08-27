@@ -37,7 +37,6 @@ function build_release_artifacts() {
     make
     make build-verify
     make apidocs
-    make client-python
     make manifests
     make olm-verify
     make prom-rules-verify

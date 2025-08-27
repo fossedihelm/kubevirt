@@ -66,9 +66,6 @@ generate-verify: generate
 apidocs:
 	hack/dockerized "./hack/gen-swagger-doc/gen-swagger-docs.sh v1 html"
 
-client-python:
-	hack/dockerized "DOCKER_TAG=${DOCKER_TAG} ./hack/gen-client-python/generate.sh"
-
 go-build:
 	KUBEVIRT_NO_BAZEL=true hack/dockerized "export KUBEVIRT_VERSION=${KUBEVIRT_VERSION} && KUBEVIRT_GO_BUILD_TAGS=${KUBEVIRT_GO_BUILD_TAGS} KUBEVIRT_RELEASE=${KUBEVIRT_RELEASE} ./hack/build-go.sh install ${WHAT}" && ./hack/build-copy-artifacts.sh ${WHAT}
 
