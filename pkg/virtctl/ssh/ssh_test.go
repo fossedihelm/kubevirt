@@ -104,7 +104,7 @@ var _ = Describe("SSH", func() {
 			sshCmd.Options = ssh.DefaultSSHOptions()
 			sshCmd.Options.SSHPort = 12345
 			clientArgs := sshCmd.BuildSSHTarget(fakeKind, fakeNamespace, fakeName)
-			cmd := ssh.LocalClientCmd(fakeKind, fakeNamespace, fakeName, &sshCmd.Options, clientArgs)
+			cmd := ssh.LocalClientCmd("ssh", fakeKind, fakeNamespace, fakeName, &sshCmd.Options, clientArgs)
 			Expect(cmd).ToNot(BeNil())
 			Expect(cmd.Args).To(HaveLen(4))
 			Expect(cmd.Args[0]).To(Equal("ssh"))

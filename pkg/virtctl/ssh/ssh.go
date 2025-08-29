@@ -95,7 +95,6 @@ func DefaultSSHOptions() SSHOptions {
 		KnownHostsFilePath:        "",
 		KnownHostsFilePathDefault: "",
 		AdditionalSSHLocalOptions: []string{},
-		LocalClientName:           "ssh",
 	}
 
 	if homeDir != "" {
@@ -117,7 +116,6 @@ type SSHOptions struct {
 	KnownHostsFilePath        string
 	KnownHostsFilePathDefault string
 	AdditionalSSHLocalOptions []string
-	LocalClientName           string
 }
 
 func (o *SSH) run(cmd *cobra.Command, args []string) error {
@@ -132,7 +130,7 @@ func (o *SSH) run(cmd *cobra.Command, args []string) error {
 	}
 
 	clientArgs := o.BuildSSHTarget(kind, namespace, name)
-	return LocalClientCmd(kind, namespace, name, &o.Options, clientArgs).Run()
+	return LocalClientCmd("ssh", kind, namespace, name, &o.Options, clientArgs).Run()
 }
 
 func (o *SSH) BuildSSHTarget(kind, namespace, name string) (opts []string) {
@@ -231,7 +229,7 @@ func ParseTarget(arg string) (kind, namespace, name, username string, err error)
 	return kind, namespace, name, username, err
 }
 
-func LocalClientCmd(kind, namespace, name string, options *SSHOptions, clientArgs []string) *exec.Cmd {
+func LocalClientCmd(command, kind, namespace, name string, options *SSHOptions, clientArgs []string) *exec.Cmd {
 	args := []string{"-o"}
 	args = append(args, BuildProxyCommandOption(kind, namespace, name, options.SSHPort))
 
@@ -244,8 +242,7 @@ func LocalClientCmd(kind, namespace, name string, options *SSHOptions, clientArg
 
 	args = append(args, clientArgs...)
 
-	//nolint:gosec
-	cmd := exec.Command(options.LocalClientName, args...)
+	cmd := exec.Command(command, args...)
 	const logLevel = 3
 	log.Log.V(logLevel).Infof("running: %v", cmd)
 	cmd.Stdout = os.Stdout
