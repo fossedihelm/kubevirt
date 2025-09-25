@@ -521,6 +521,19 @@ var _ = Describe("[sig-compute]VirtualMachinePool", decorators.SigCompute, func(
 			Expect(vm.OwnerReferences).To(BeEmpty())
 		}
 		Expect(err).ToNot(HaveOccurred())
+
+		// Remove the finalizer
+		for _, vm := range vms.Items {
+			vm, err := virtClient.VirtualMachine(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
+			Expect(err).ToNot(HaveOccurred())
+			if vm.Finalizers == nil {
+				continue
+			}
+
+			vm.Finalizers = []string{}
+			_, err = virtClient.VirtualMachine(vm.Namespace).Patch(context.Background(), vm.Name, types.JSONPatchType, []byte("[{ \"op\": \"remove\", \"path\": \"/metadata/finalizers\" }]"), metav1.PatchOptions{})
+			Expect(err).ToNot(HaveOccurred())
+		}
 	})
 
 	It("should not scale when paused and scale when resume", func() {
