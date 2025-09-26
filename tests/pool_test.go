@@ -514,26 +514,25 @@ var _ = Describe("[sig-compute]VirtualMachinePool", decorators.SigCompute, func(
 		vms, err = virtClient.VirtualMachine(newPool.ObjectMeta.Namespace).List(context.Background(), metav1.ListOptions{
 			LabelSelector: labelSelectorToString(newPool.Spec.Selector),
 		})
+		Expect(err).ToNot(HaveOccurred())
 		Expect(vms.Items).To(HaveLen(2))
 
 		By("Checking a VirtualMachine owner references")
 		for _, vm := range vms.Items {
 			Expect(vm.OwnerReferences).To(BeEmpty())
 		}
+
+		By("Checking VirtualMachines are not blocked by pool finalizer")
+		err = virtClient.VirtualMachine(newPool.ObjectMeta.Namespace).DeleteCollection(context.Background(), metav1.DeleteOptions{}, metav1.ListOptions{
+			LabelSelector: labelSelectorToString(newPool.Spec.Selector),
+		})
 		Expect(err).ToNot(HaveOccurred())
-
-		// Remove the finalizer
-		for _, vm := range vms.Items {
-			vm, err := virtClient.VirtualMachine(vm.Namespace).Get(context.Background(), vm.Name, metav1.GetOptions{})
-			Expect(err).ToNot(HaveOccurred())
-			if vm.Finalizers == nil {
-				continue
-			}
-
-			vm.Finalizers = []string{}
-			_, err = virtClient.VirtualMachine(vm.Namespace).Patch(context.Background(), vm.Name, types.JSONPatchType, []byte("[{ \"op\": \"remove\", \"path\": \"/metadata/finalizers\" }]"), metav1.PatchOptions{})
-			Expect(err).ToNot(HaveOccurred())
-		}
+		Eventually(func() ([]v1.VirtualMachine, error) {
+			vms, err = virtClient.VirtualMachine(newPool.ObjectMeta.Namespace).List(context.Background(), metav1.ListOptions{
+				LabelSelector: labelSelectorToString(newPool.Spec.Selector),
+			})
+			return vms.Items, err
+		}).Should(BeEmpty())
 	})
 
 	It("should not scale when paused and scale when resume", func() {

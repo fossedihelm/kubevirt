@@ -33,6 +33,7 @@ import (
 	utilerrors "k8s.io/apimachinery/pkg/util/errors"
 
 	virtv1 "kubevirt.io/api/core/v1"
+	poolv1 "kubevirt.io/api/pool/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/client-go/log"
 	cdiv1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
@@ -471,8 +472,14 @@ func (m *VirtualMachineControllerRefManager) AdoptVirtualMachine(vm *virtv1.Virt
 func (m *VirtualMachineControllerRefManager) ReleaseVirtualMachine(vm *virtv1.VirtualMachine) error {
 	log.Log.V(2).Object(vm).Infof("patching vm to remove its controllerRef to %s/%s:%s",
 		m.controllerKind.GroupVersion(), m.controllerKind.Kind, m.Controller.GetName())
+	newFinalizers := []string{}
+	for _, fin := range vm.Finalizers {
+		if fin != poolv1.VirtualMachinePoolControllerFinalizer {
+			newFinalizers = append(newFinalizers, fin)
+		}
+	}
 	// TODO CRDs don't support strategic merge, therefore replace the onwerReferences list with a merge patch
-	deleteOwnerRefPatch := fmt.Sprint(`{"metadata":{"ownerReferences":[]}}`)
+	deleteOwnerRefPatch := fmt.Sprintf(`{"metadata":{"ownerReferences":[],"finalizers":%s}}`, newFinalizers)
 	err := m.virtualMachineControl.PatchVirtualMachine(vm.Namespace, vm.Name, []byte(deleteOwnerRefPatch))
 	if err != nil {
 		if errors.IsNotFound(err) {

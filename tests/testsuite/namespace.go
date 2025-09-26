@@ -35,7 +35,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 
 	v1 "kubevirt.io/api/core/v1"
-	poolv1 "kubevirt.io/api/pool/v1alpha1"
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/client-go/log"
 
@@ -132,17 +131,17 @@ func CleanNamespaces() {
 
 		// Remove all VirtualMachines
 		Expect(virtCli.RestClient().Delete().Namespace(namespace).Resource("virtualmachines").Do(context.Background()).Error()).To(Succeed())
-		vms, err := virtCli.VirtualMachine(namespace).List(context.Background(), metav1.ListOptions{})
-		Expect(err).ToNot(HaveOccurred())
-		for _, vm := range vms.Items {
-			if controller.HasFinalizer(&vm, poolv1.VirtualMachinePoolControllerFinalizer) {
-				_, err := virtCli.VirtualMachine(vm.Namespace).Patch(context.Background(), vm.Name, types.JSONPatchType, []byte("[{ \"op\": \"remove\", \"path\": \"/metadata/finalizers\" }]"), metav1.PatchOptions{})
-				Expect(err).To(Or(
-					Not(HaveOccurred()),
-					MatchError(errors.IsNotFound, "errors.IsNotFound"),
-				))
-			}
-		}
+		//vms, err := virtCli.VirtualMachine(namespace).List(context.Background(), metav1.ListOptions{})
+		//Expect(err).ToNot(HaveOccurred())
+		//for _, vm := range vms.Items {
+		//	if controller.HasFinalizer(&vm, poolv1.VirtualMachinePoolControllerFinalizer) {
+		//		_, err := virtCli.VirtualMachine(vm.Namespace).Patch(context.Background(), vm.Name, types.JSONPatchType, []byte("[{ \"op\": \"remove\", \"path\": \"/metadata/finalizers\" }]"), metav1.PatchOptions{})
+		//		Expect(err).To(Or(
+		//			Not(HaveOccurred()),
+		//			MatchError(errors.IsNotFound, "errors.IsNotFound"),
+		//		))
+		//	}
+		//}
 
 		// Remove all VirtualMachineReplicaSets
 		Expect(virtCli.RestClient().Delete().Namespace(namespace).Resource("virtualmachineinstancereplicasets").Do(context.Background()).Error()).To(Succeed())

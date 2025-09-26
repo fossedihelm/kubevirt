@@ -31,6 +31,8 @@ import (
 	"strings"
 	"time"
 
+	poolv1 "kubevirt.io/api/pool/v1alpha1"
+
 	"kubevirt.io/kubevirt/pkg/instancetype/revision"
 	"kubevirt.io/kubevirt/pkg/libvmi"
 	"kubevirt.io/kubevirt/pkg/liveupdate/memory"
@@ -2335,7 +2337,11 @@ func (c *Controller) removeVMIFinalizer(vmi *virtv1.VirtualMachineInstance) erro
 }
 
 func (c *Controller) removeVMFinalizer(vm *virtv1.VirtualMachine) (*virtv1.VirtualMachine, error) {
-	if !controller.HasFinalizer(vm, virtv1.VirtualMachineControllerFinalizer) {
+	removePoolFinalizer := false
+	if len(vm.OwnerReferences) == 0 && controller.HasFinalizer(vm, poolv1.VirtualMachinePoolControllerFinalizer) {
+		removePoolFinalizer = true
+	}
+	if !removePoolFinalizer && !controller.HasFinalizer(vm, virtv1.VirtualMachineControllerFinalizer) {
 		return vm, nil
 	}
 
@@ -2344,7 +2350,8 @@ func (c *Controller) removeVMFinalizer(vm *virtv1.VirtualMachine) (*virtv1.Virtu
 	newFinalizers := []string{}
 
 	for _, fin := range vm.Finalizers {
-		if fin != virtv1.VirtualMachineControllerFinalizer {
+		if (!removePoolFinalizer && fin != virtv1.VirtualMachineControllerFinalizer) ||
+			(removePoolFinalizer && fin != poolv1.VirtualMachinePoolControllerFinalizer) {
 			newFinalizers = append(newFinalizers, fin)
 		}
 	}
