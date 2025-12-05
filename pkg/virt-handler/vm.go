@@ -1420,8 +1420,10 @@ func (c *VirtualMachineController) sync(key string,
 	}
 
 	if !domainAlive && domainExists && !vmi.IsFinal() {
-		log.Log.Object(vmi).V(3).Info("Deleting inactive domain for vmi.")
-		shouldDelete = true
+		if domain.Status.Status != api.Shutoff && domain.Status.Reason != api.ReasonUnknown {
+			log.Log.Object(vmi).V(3).Info("Deleting inactive domain for vmi.")
+			shouldDelete = true
+		}
 	}
 
 	// Determine if an active (or about to be active) VirtualMachineInstance should be updated.
