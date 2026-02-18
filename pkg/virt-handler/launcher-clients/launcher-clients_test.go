@@ -29,7 +29,9 @@ import (
 
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"go.uber.org/mock/gomock"
 
+	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -38,6 +40,7 @@ import (
 
 	"kubevirt.io/kubevirt/pkg/testutils"
 	virtcache "kubevirt.io/kubevirt/pkg/virt-handler/cache"
+	cmdclient "kubevirt.io/kubevirt/pkg/virt-handler/cmd-client"
 	notifyserver "kubevirt.io/kubevirt/pkg/virt-handler/notify-server"
 	notifyclient "kubevirt.io/kubevirt/pkg/virt-launcher/notify-client"
 )
@@ -273,5 +276,159 @@ var _ = Describe("LauncherClientInfo Close", func() {
 		for range 5 {
 			<-done
 		}
+	})
+})
+
+var _ = Describe("GetVerifiedLauncherClient FindSocket check", func() {
+	var (
+		manager    *launcherClientsManager
+		vmi        *v1.VirtualMachineInstance
+		podUID     = "test-pod-uid"
+		socketPath string
+	)
+
+	BeforeEach(func() {
+		vmi = api2.NewMinimalVMI("test-vmi")
+		vmi.UID = "test-vmi-uid"
+		vmi.Status.ActivePods = map[types.UID]string{
+			types.UID(podUID): "test-node",
+		}
+
+		// Set up socket directory
+		podsDir := GinkgoT().TempDir()
+		cmdclient.SetPodsBaseDir(podsDir)
+		socketPath = cmdclient.SocketFilePathOnHost(podUID)
+
+		// Set environment for FindSocket to find the correct path
+		_ = os.Setenv("NODE_NAME", "test-node")
+		DeferCleanup(func() {
+			_ = os.Unsetenv("NODE_NAME")
+		})
+
+		manager = &launcherClientsManager{
+			launcherClients: virtcache.LauncherClientInfoByVMI{},
+		}
+	})
+
+	It("should succeed when both Ping and FindSocket succeed", func() {
+		// Create the socket file structure
+		Expect(os.MkdirAll(filepath.Dir(socketPath), 0755)).To(Succeed())
+		f, err := os.Create(socketPath)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(f.Close()).To(Succeed())
+
+		// Create mock client that succeeds on Ping
+		ctrl := gomock.NewController(GinkgoT())
+		defer ctrl.Finish()
+		mockClient := cmdclient.NewMockLauncherClient(ctrl)
+		mockClient.EXPECT().Ping().Return(nil)
+
+		// Store the client in the manager
+		manager.launcherClients.Store(vmi.UID, &virtcache.LauncherClientInfo{
+			Client:     mockClient,
+			SocketFile: socketPath,
+			Ready:      true,
+		})
+
+		// Call GetVerifiedLauncherClient
+		client, err := manager.GetVerifiedLauncherClient(vmi)
+
+		// Both Ping and FindSocket succeeded, so no error
+		Expect(err).ToNot(HaveOccurred())
+		Expect(client).To(Equal(mockClient))
+	})
+
+	It("should return error when Ping succeeds but FindSocket fails", func() {
+		// Don't create the socket file, so FindSocket will fail
+
+		// Create mock client that succeeds on Ping
+		ctrl := gomock.NewController(GinkgoT())
+		defer ctrl.Finish()
+		mockClient := cmdclient.NewMockLauncherClient(ctrl)
+		mockClient.EXPECT().Ping().Return(nil)
+
+		// Store the client in the manager
+		manager.launcherClients.Store(vmi.UID, &virtcache.LauncherClientInfo{
+			Client:     mockClient,
+			SocketFile: "/nonexistent/socket",
+			Ready:      true,
+		})
+
+		// Call GetVerifiedLauncherClient
+		client, err := manager.GetVerifiedLauncherClient(vmi)
+
+		// Ping succeeded but FindSocket failed, so we should get an error
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("No command socket found"))
+		Expect(client).To(Equal(mockClient))
+	})
+
+	It("should return immediately when Ping fails without calling FindSocket", func() {
+		// Create the socket file (to prove FindSocket is not called)
+		Expect(os.MkdirAll(filepath.Dir(socketPath), 0755)).To(Succeed())
+		f, err := os.Create(socketPath)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(f.Close()).To(Succeed())
+
+		// Create mock client that fails on Ping
+		ctrl := gomock.NewController(GinkgoT())
+		defer ctrl.Finish()
+		mockClient := cmdclient.NewMockLauncherClient(ctrl)
+		pingErr := fmt.Errorf("connection refused")
+		mockClient.EXPECT().Ping().Return(pingErr)
+
+		// Store the client in the manager
+		manager.launcherClients.Store(vmi.UID, &virtcache.LauncherClientInfo{
+			Client:     mockClient,
+			SocketFile: socketPath,
+			Ready:      true,
+		})
+
+		// Call GetVerifiedLauncherClient
+		client, err := manager.GetVerifiedLauncherClient(vmi)
+
+		// Ping failed, so we return with ping error (FindSocket not called)
+		Expect(err).To(HaveOccurred())
+		Expect(err).To(Equal(pingErr))
+		Expect(client).To(Equal(mockClient))
+	})
+
+	It("should detect socket removal after successful ping", func() {
+		// This test simulates the race condition mentioned in the comment:
+		// "It's possible the pod has already been torn down along with the VirtualMachineInstance"
+
+		// Create the socket file initially
+		Expect(os.MkdirAll(filepath.Dir(socketPath), 0755)).To(Succeed())
+		f, err := os.Create(socketPath)
+		Expect(err).ToNot(HaveOccurred())
+		Expect(f.Close()).To(Succeed())
+
+		// Create mock client that succeeds on Ping
+		ctrl := gomock.NewController(GinkgoT())
+		defer ctrl.Finish()
+		mockClient := cmdclient.NewMockLauncherClient(ctrl)
+
+		// Simulate the race: Ping succeeds, but socket is removed before FindSocket is called
+		mockClient.EXPECT().Ping().DoAndReturn(func() error {
+			// But immediately after ping, socket is removed (simulating pod teardown)
+			_ = os.RemoveAll(filepath.Dir(socketPath))
+			// Ping still succeeds
+			return nil
+		})
+
+		// Store the client in the manager
+		manager.launcherClients.Store(vmi.UID, &virtcache.LauncherClientInfo{
+			Client:     mockClient,
+			SocketFile: socketPath,
+			Ready:      true,
+		})
+
+		// Call GetVerifiedLauncherClient
+		client, err := manager.GetVerifiedLauncherClient(vmi)
+
+		// Ping succeeded but FindSocket detected the socket was removed
+		Expect(err).To(HaveOccurred())
+		Expect(err.Error()).To(ContainSubstring("No command socket found"))
+		Expect(client).To(Equal(mockClient))
 	})
 })
