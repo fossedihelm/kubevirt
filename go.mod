@@ -7,6 +7,7 @@ require (
 	github.com/cheggaaa/pb/v3 v3.1.0
 	github.com/containernetworking/cni v1.2.3
 	github.com/containernetworking/plugins v1.5.1
+	github.com/containers/common v0.60.4
 	github.com/coreos/go-semver v0.3.1
 	github.com/emicklei/go-restful/v3 v3.13.0
 	github.com/evanphx/json-patch v5.6.0+incompatible
@@ -124,6 +125,7 @@ require (
 	github.com/google/gnostic-models v0.7.1 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/go-querystring v1.0.0 // indirect
+	github.com/google/goterm v0.0.0-20190311235235-ce302be1d114 // indirect; indirect github.com/gophercloud/gophercloud v0.4.0 // indirect
 	github.com/google/pprof v0.0.0-20251007162407-5df77e3f7d1d // indirect
 	github.com/google/renameio/v2 v2.0.0 // indirect
 	github.com/grafana/regexp v0.0.0-20221122212121-6b5c0a4cb7fd // indirect
@@ -174,11 +176,6 @@ require (
 	mvdan.cc/sh/v3 v3.8.0 // indirect
 	sigs.k8s.io/json v0.0.0-20250730193827-2d320260d730 // indirect
 	sigs.k8s.io/structured-merge-diff/v6 v6.3.0 // indirect
-)
-
-require (
-	github.com/containers/common v0.60.4
-	github.com/google/goterm v0.0.0-20190311235235-ce302be1d114 // indirect; indirect github.com/gophercloud/gophercloud v0.4.0 // indirect
 )
 
 replace (
