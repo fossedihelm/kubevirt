@@ -9,7 +9,7 @@ go_library(
         "hyperv.go",
         "s390x.go",
     ],
-    importpath = "kubevirt.io/kubevirt/pkg/defaults",
+    importpath = "kubevirt.io/render/defaults",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/liveupdate/memory:go_default_library",

@@ -8,6 +8,8 @@ import (
 	. "github.com/onsi/gomega"
 	"go.uber.org/mock/gomock"
 
+	defaults2 "kubevirt.io/render/defaults"
+
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/tools/cache"
 	v1 "kubevirt.io/api/core/v1"
@@ -15,7 +17,6 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	cdiv1beta1 "kubevirt.io/containerized-data-importer-api/pkg/apis/core/v1beta1"
 
-	"kubevirt.io/kubevirt/pkg/defaults"
 	"kubevirt.io/kubevirt/pkg/libdv"
 	"kubevirt.io/kubevirt/pkg/libvmi"
 	"kubevirt.io/kubevirt/pkg/pointer"
@@ -85,13 +86,13 @@ var _ = Describe("Defaults", func() {
 						),
 					),
 				)
-				defaults.SetVirtualMachineDefaults(vm, clusterConfig, virtClient)
+				defaults2.SetVirtualMachineDefaults(vm, clusterConfig, virtClient)
 				Expect(vm.Spec.Template.Spec.Architecture).To(Equal(configProvidedArch))
 			})
 
 			DescribeTable("should default to", func(createVM func() *v1.VirtualMachine, expectedArch string) {
 				vm := createVM()
-				defaults.SetVirtualMachineDefaults(vm, clusterConfig, virtClient)
+				defaults2.SetVirtualMachineDefaults(vm, clusterConfig, virtClient)
 				Expect(vm.Spec.Template.Spec.Architecture).To(Equal(expectedArch))
 			},
 				Entry("user provided value when provided", func() *v1.VirtualMachine {
@@ -196,7 +197,7 @@ var _ = Describe("Defaults", func() {
 
 	Context("Arm64 bootloader", func() {
 		DescribeTable("should correctly default SecureBoot", func(vmi *v1.VirtualMachineInstance, expectedEFI *v1.EFI) {
-			defaults.SetArm64Defaults(&vmi.Spec)
+			defaults2.SetArm64Defaults(&vmi.Spec)
 			Expect(vmi.Spec.Domain.Firmware).ToNot(BeNil())
 			Expect(vmi.Spec.Domain.Firmware.Bootloader).ToNot(BeNil())
 			if expectedEFI == nil {
@@ -246,7 +247,7 @@ var _ = Describe("Defaults", func() {
 				if machineType != nil {
 					spec.Domain.Machine = &v1.Machine{Type: *machineType}
 				}
-				Expect(defaults.SupportsPCIeHotplug(spec)).To(Equal(expected))
+				Expect(defaults2.SupportsPCIeHotplug(spec)).To(Equal(expected))
 			},
 			Entry("amd64 with q35", "amd64", pointer.P("pc-q35-3.0"), true),
 			Entry("amd64 with no machine type", "amd64", nil, true),

@@ -34,9 +34,9 @@ import (
 	v1 "kubevirt.io/api/core/v1"
 	instancetypev1beta1 "kubevirt.io/api/instancetype/v1beta1"
 	"kubevirt.io/client-go/kubecli"
+	"kubevirt.io/render/defaults"
 
 	"kubevirt.io/kubevirt/pkg/controller"
-	"kubevirt.io/kubevirt/pkg/defaults"
 	"kubevirt.io/kubevirt/pkg/instancetype/conflict"
 	instancetypeWebhooks "kubevirt.io/kubevirt/pkg/instancetype/webhooks/vm"
 	"kubevirt.io/kubevirt/pkg/liveupdate/memory"

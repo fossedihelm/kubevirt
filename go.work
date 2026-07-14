@@ -4,6 +4,7 @@ use (
 	.
 	./staging/src/kubevirt.io/api
 	./staging/src/kubevirt.io/client-go
+	./staging/src/kubevirt.io/render
 )
 
 replace k8s.io/api => k8s.io/api v0.34.2

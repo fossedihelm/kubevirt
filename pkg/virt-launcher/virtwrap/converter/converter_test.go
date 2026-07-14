@@ -44,9 +44,9 @@ import (
 
 	v1 "kubevirt.io/api/core/v1"
 	kvapi "kubevirt.io/client-go/api"
+	"kubevirt.io/render/defaults"
 
 	"kubevirt.io/kubevirt/pkg/config"
-	"kubevirt.io/kubevirt/pkg/defaults"
 	"kubevirt.io/kubevirt/pkg/downwardmetrics"
 	"kubevirt.io/kubevirt/pkg/ephemeral-disk/fake"
 	cmdv1 "kubevirt.io/kubevirt/pkg/handler-launcher-com/cmd/v1"
