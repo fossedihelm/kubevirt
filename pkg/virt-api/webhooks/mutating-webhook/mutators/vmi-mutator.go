@@ -31,12 +31,10 @@ import (
 	"k8s.io/client-go/tools/cache"
 
 	v1 "kubevirt.io/api/core/v1"
-	"kubevirt.io/client-go/log"
-	"kubevirt.io/render/defaults"
+	"kubevirt.io/render/mutators"
 
 	"kubevirt.io/kubevirt/pkg/apimachinery/patch"
 	kvpointer "kubevirt.io/kubevirt/pkg/pointer"
-	"kubevirt.io/kubevirt/pkg/util"
 	webhookutils "kubevirt.io/kubevirt/pkg/util/webhooks"
 	"kubevirt.io/kubevirt/pkg/virt-api/webhooks"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
@@ -49,46 +47,6 @@ type VMIsMutator struct {
 }
 
 const presetDeprecationWarning = "kubevirt.io/v1 VirtualMachineInstancePresets is now deprecated and will be removed in v2."
-
-// ApplyNewVMIMutations applies all VMI mutations to a VMI object.
-func ApplyNewVMIMutations(newVMI *v1.VirtualMachineInstance, clusterConfig *virtconfig.ClusterConfig) error {
-	// Set VirtualMachineInstance defaults
-	log.Log.Object(newVMI).V(4).Info("Apply defaults")
-	if err := defaults.SetDefaultVirtualMachineInstance(clusterConfig, newVMI); err != nil {
-		return err
-	}
-
-	if defaults.SupportsPCIeHotplug(&newVMI.Spec) {
-		setDefaultPciTopologyVersion(&newVMI.ObjectMeta)
-	}
-
-	if newVMI.Spec.Domain.CPU.IsolateEmulatorThread {
-		_, emulatorThreadCompleteToEvenParityAnnotationExists := clusterConfig.GetConfigFromKubeVirtCR().Annotations[v1.EmulatorThreadCompleteToEvenParity]
-		if emulatorThreadCompleteToEvenParityAnnotationExists && clusterConfig.AlignCPUsEnabled() {
-			log.Log.V(4).Infof("Copy %s annotation from Kubevirt CR", v1.EmulatorThreadCompleteToEvenParity)
-			if newVMI.Annotations == nil {
-				newVMI.Annotations = map[string]string{}
-			}
-			newVMI.Annotations[v1.EmulatorThreadCompleteToEvenParity] = ""
-		}
-	}
-
-	if util.IsTDXVMI(newVMI) {
-		qgsSocketPath := clusterConfig.GetQGSSocketPath()
-		if qgsSocketPath != "" {
-			if newVMI.Annotations == nil {
-				newVMI.Annotations = map[string]string{}
-			}
-			newVMI.Annotations[v1.QGSSocketPathAnnotation] = qgsSocketPath
-		}
-	}
-
-	if !clusterConfig.RootEnabled() {
-		markAsNonroot(newVMI)
-	}
-
-	return nil
-}
 
 func (mutator *VMIsMutator) Mutate(ar *admissionv1.AdmissionReview) *admissionv1.AdmissionResponse {
 	if !webhookutils.ValidateRequestResource(ar.Request.Resource, webhooks.VirtualMachineInstanceGroupVersionResource.Group, webhooks.VirtualMachineInstanceGroupVersionResource.Resource) {
@@ -120,7 +78,7 @@ func (mutator *VMIsMutator) Mutate(ar *admissionv1.AdmissionReview) *admissionv1
 			}
 		}
 
-		if err := ApplyNewVMIMutations(newVMI, mutator.ClusterConfig); err != nil {
+		if err := mutators.ApplyNewVMIMutations(newVMI, mutator.ClusterConfig); err != nil {
 			return webhookutils.ToAdmissionResponseError(err)
 		}
 
@@ -179,20 +137,4 @@ func (mutator *VMIsMutator) Mutate(ar *admissionv1.AdmissionReview) *admissionv1
 	}
 
 	return response
-}
-
-func markAsNonroot(vmi *v1.VirtualMachineInstance) {
-	vmi.Status.RuntimeUser = 107
-}
-
-// setDefaultPciTopologyVersion sets the PCI topology version annotation to v3
-// if not already present. Used by both VMI and VM mutating webhooks on CREATE.
-func setDefaultPciTopologyVersion(meta *metav1.ObjectMeta) {
-	if _, exists := meta.Annotations[v1.PciTopologyVersionAnnotation]; exists {
-		return
-	}
-	if meta.Annotations == nil {
-		meta.Annotations = map[string]string{}
-	}
-	meta.Annotations[v1.PciTopologyVersionAnnotation] = v1.PciTopologyVersionV3
 }

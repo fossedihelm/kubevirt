@@ -36,8 +36,8 @@ import (
 	virtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/render/defaults"
 	"kubevirt.io/render/defaults/network"
+	"kubevirt.io/render/mutators"
 
-	"kubevirt.io/kubevirt/pkg/virt-api/webhooks/mutating-webhook/mutators"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 	"kubevirt.io/kubevirt/pkg/virt-controller/services"
 )

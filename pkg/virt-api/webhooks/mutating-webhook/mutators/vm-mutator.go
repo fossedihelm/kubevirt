@@ -31,6 +31,7 @@ import (
 	"kubevirt.io/client-go/kubecli"
 	"kubevirt.io/client-go/log"
 	"kubevirt.io/render/defaults"
+	"kubevirt.io/render/mutators"
 
 	"kubevirt.io/kubevirt/pkg/apimachinery/patch"
 	instancetypeVMWebhooks "kubevirt.io/kubevirt/pkg/instancetype/webhooks/vm"
@@ -97,7 +98,7 @@ func (mutator *VMsMutator) Mutate(ar *admissionv1.AdmissionReview) *admissionv1.
 
 	if ar.Request.Operation == admissionv1.Create {
 		if defaults.SupportsPCIeHotplug(&vm.Spec.Template.Spec) {
-			setDefaultPciTopologyVersion(&vm.Spec.Template.ObjectMeta)
+			mutators.SetDefaultPciTopologyVersion(&vm.Spec.Template.ObjectMeta)
 		}
 	}
 

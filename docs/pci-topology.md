@@ -205,7 +205,7 @@ in the snapshot content and carried through to the new VM:
    annotations are preserved unless the user specifies
    `cloneSpec.Template.AnnotationFilters` to remove them
 3. When the new VM is created, the mutating webhook fires but
-   `setDefaultPciTopologyVersion` checks if the annotation already exists
+   `SetDefaultPciTopologyVersion` checks if the annotation already exists
    on the template and returns early
 
 **Result**: A v2 source produces a v2 clone with the same frozen placeholder
