@@ -31,6 +31,7 @@ import (
 	"strings"
 	"time"
 
+	"kubevirt.io/render/defaults"
 	netvmispec "kubevirt.io/render/defaults/network"
 
 	"kubevirt.io/kubevirt/pkg/instancetype/revision"
@@ -74,7 +75,6 @@ import (
 	storagetypes "kubevirt.io/kubevirt/pkg/storage/types"
 	storageutils "kubevirt.io/kubevirt/pkg/storage/utils"
 	"kubevirt.io/kubevirt/pkg/storage/velero"
-	"kubevirt.io/kubevirt/pkg/util"
 	"kubevirt.io/kubevirt/pkg/util/hardware"
 	"kubevirt.io/kubevirt/pkg/util/migrations"
 	traceUtils "kubevirt.io/kubevirt/pkg/util/trace"
@@ -1892,7 +1892,7 @@ func SetupVMIFromVM(vm *virtv1.VirtualMachine) *virtv1.VirtualMachineInstance {
 		*metav1.NewControllerRef(vm, virtv1.VirtualMachineGroupVersionKind),
 	}
 
-	util.SetDefaultVolumeDisk(&vmi.Spec)
+	defaults.SetDefaultVolumeDisk(&vmi.Spec)
 
 	return vmi
 }

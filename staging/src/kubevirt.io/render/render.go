@@ -37,7 +37,6 @@ import (
 	"kubevirt.io/render/defaults"
 	"kubevirt.io/render/defaults/network"
 
-	"kubevirt.io/kubevirt/pkg/util"
 	"kubevirt.io/kubevirt/pkg/virt-api/webhooks/mutating-webhook/mutators"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 	"kubevirt.io/kubevirt/pkg/virt-controller/services"
@@ -137,7 +136,7 @@ func renderPod(vmi *virtv1.VirtualMachineInstance, config *virtconfig.ClusterCon
 		return nil, fmt.Errorf("failed to set default network: %w", err)
 	}
 
-	util.SetDefaultVolumeDisk(&vmi.Spec)
+	defaults.SetDefaultVolumeDisk(&vmi.Spec)
 	autoAttachInputDevice(vmi)
 
 	pvcCache := cache.NewIndexer(cache.DeletionHandlingMetaNamespaceKeyFunc, nil)
@@ -207,7 +206,7 @@ func setupVMIFromVM(vm *virtv1.VirtualMachine) *virtv1.VirtualMachineInstance {
 		vmi.Spec.Domain.Firmware.UUID = types.UID(uuid.NewSHA1(firmwareUUIDns, []byte(vmi.Name)).String())
 	}
 
-	util.SetDefaultVolumeDisk(&vmi.Spec)
+	defaults.SetDefaultVolumeDisk(&vmi.Spec)
 
 	return vmi
 }

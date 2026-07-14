@@ -33,7 +33,6 @@ import (
 	"kubevirt.io/render/defaults/network"
 
 	"kubevirt.io/kubevirt/pkg/liveupdate/memory"
-	"kubevirt.io/kubevirt/pkg/util"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 )
 
@@ -201,7 +200,7 @@ func SetDefaultVirtualMachineInstanceSpec(clusterConfig *virtconfig.ClusterConfi
 	if err := network.SetDefaultNetworkInterface(clusterConfig, spec); err != nil {
 		return err
 	}
-	util.SetDefaultVolumeDisk(spec)
+	SetDefaultVolumeDisk(spec)
 	return nil
 }
 
@@ -394,4 +393,27 @@ func SupportsPCIeHotplug(spec *v1.VirtualMachineInstanceSpec) bool {
 		return false
 	}
 	return true
+}
+
+func SetDefaultVolumeDisk(spec *v1.VirtualMachineInstanceSpec) {
+	diskAndFilesystemNames := make(map[string]struct{})
+
+	for _, disk := range spec.Domain.Devices.Disks {
+		diskAndFilesystemNames[disk.Name] = struct{}{}
+	}
+
+	for _, fs := range spec.Domain.Devices.Filesystems {
+		diskAndFilesystemNames[fs.Name] = struct{}{}
+	}
+
+	for _, volume := range spec.Volumes {
+		if _, foundDisk := diskAndFilesystemNames[volume.Name]; !foundDisk {
+			spec.Domain.Devices.Disks = append(
+				spec.Domain.Devices.Disks,
+				v1.Disk{
+					Name: volume.Name,
+				},
+			)
+		}
+	}
 }

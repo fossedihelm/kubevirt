@@ -29,7 +29,6 @@ import (
 
 	"kubevirt.io/kubevirt/pkg/instancetype/apply"
 	"kubevirt.io/kubevirt/pkg/instancetype/conflict"
-	utils "kubevirt.io/kubevirt/pkg/util"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 )
 
@@ -89,7 +88,7 @@ func (e *expander) Expand(vm *virtv1.VirtualMachine) (*virtv1.VirtualMachine, er
 
 	expandedVM := vm.DeepCopy()
 
-	utils.SetDefaultVolumeDisk(&expandedVM.Spec.Template.Spec)
+	defaults.SetDefaultVolumeDisk(&expandedVM.Spec.Template.Spec)
 
 	if err := network.SetDefaultNetworkInterface(e.clusterConfig, &expandedVM.Spec.Template.Spec); err != nil {
 		return nil, err

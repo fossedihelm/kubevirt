@@ -128,29 +128,6 @@ func AlignImageSizeTo1MiB(size int64, logger *log.FilteredLogger) int64 {
 
 }
 
-func SetDefaultVolumeDisk(spec *v1.VirtualMachineInstanceSpec) {
-	diskAndFilesystemNames := make(map[string]struct{})
-
-	for _, disk := range spec.Domain.Devices.Disks {
-		diskAndFilesystemNames[disk.Name] = struct{}{}
-	}
-
-	for _, fs := range spec.Domain.Devices.Filesystems {
-		diskAndFilesystemNames[fs.Name] = struct{}{}
-	}
-
-	for _, volume := range spec.Volumes {
-		if _, foundDisk := diskAndFilesystemNames[volume.Name]; !foundDisk {
-			spec.Domain.Devices.Disks = append(
-				spec.Domain.Devices.Disks,
-				v1.Disk{
-					Name: volume.Name,
-				},
-			)
-		}
-	}
-}
-
 func CalcExpectedMemoryDumpSize(vmi *v1.VirtualMachineInstance) *resource.Quantity {
 	const memoryDumpOverhead = 100 * 1024 * 1024
 	domain := vmi.Spec.Domain
