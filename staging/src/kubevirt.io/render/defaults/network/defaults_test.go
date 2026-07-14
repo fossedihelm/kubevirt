@@ -17,23 +17,23 @@
  *
  */
 
-package vmispec_test
+package network_test
 
 import (
 	. "github.com/onsi/ginkgo/v2"
 	. "github.com/onsi/gomega"
+	"kubevirt.io/render/defaults/network"
 
 	v1 "kubevirt.io/api/core/v1"
 
 	"kubevirt.io/kubevirt/pkg/libvmi"
-	"kubevirt.io/kubevirt/pkg/network/vmispec"
 )
 
 var _ = Describe("Default pod network", func() {
 	DescribeTable("It should not automatically add the pod network to the VMI", func(vmi *v1.VirtualMachineInstance) {
 		origSpec := vmi.Spec.DeepCopy()
 
-		Expect(vmispec.SetDefaultNetworkInterface(stubClusterConfig{}, &vmi.Spec)).To(Succeed())
+		Expect(network.SetDefaultNetworkInterface(stubClusterConfig{}, &vmi.Spec)).To(Succeed())
 
 		Expect(vmi.Spec).To(Equal(*origSpec))
 	},
@@ -52,7 +52,7 @@ var _ = Describe("Default pod network", func() {
 			isBridgeInterfaceEnabledOnPodNetwork: true,
 		}
 
-		Expect(vmispec.SetDefaultNetworkInterface(config, &vmi.Spec)).To(Succeed())
+		Expect(network.SetDefaultNetworkInterface(config, &vmi.Spec)).To(Succeed())
 
 		Expect(vmi.Spec.Domain.Devices.Interfaces).To(Equal([]v1.Interface{*v1.DefaultBridgeNetworkInterface()}))
 		Expect(vmi.Spec.Networks).To(Equal([]v1.Network{*v1.DefaultPodNetwork()}))
@@ -64,7 +64,7 @@ var _ = Describe("Default pod network", func() {
 	DescribeTable("It should add the pod network using masquerade binding", func(vmi *v1.VirtualMachineInstance) {
 		config := stubClusterConfig{defaultNetworkInterface: string(v1.MasqueradeInterface)}
 
-		Expect(vmispec.SetDefaultNetworkInterface(config, &vmi.Spec)).To(Succeed())
+		Expect(network.SetDefaultNetworkInterface(config, &vmi.Spec)).To(Succeed())
 
 		Expect(vmi.Spec.Domain.Devices.Interfaces).To(Equal([]v1.Interface{*v1.DefaultMasqueradeNetworkInterface()}))
 		Expect(vmi.Spec.Networks).To(Equal([]v1.Network{*v1.DefaultPodNetwork()}))
@@ -74,7 +74,7 @@ var _ = Describe("Default pod network", func() {
 	)
 
 	DescribeTable("It should return an error", func(config stubClusterConfig, expectedErrMsg string) {
-		Expect(vmispec.SetDefaultNetworkInterface(config, &v1.VirtualMachineInstanceSpec{})).To(MatchError(expectedErrMsg))
+		Expect(network.SetDefaultNetworkInterface(config, &v1.VirtualMachineInstanceSpec{})).To(MatchError(expectedErrMsg))
 	},
 		Entry("when bridge binding is the cluster-wide default, but it is disabled on pod network",
 			stubClusterConfig{

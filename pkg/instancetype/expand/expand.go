@@ -21,6 +21,7 @@ package expand
 import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	k8sfield "k8s.io/apimachinery/pkg/util/validation/field"
+	"kubevirt.io/render/defaults/network"
 
 	virtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/api/instancetype/v1beta1"
@@ -28,7 +29,6 @@ import (
 
 	"kubevirt.io/kubevirt/pkg/instancetype/apply"
 	"kubevirt.io/kubevirt/pkg/instancetype/conflict"
-	"kubevirt.io/kubevirt/pkg/network/vmispec"
 	utils "kubevirt.io/kubevirt/pkg/util"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
 )
@@ -91,7 +91,7 @@ func (e *expander) Expand(vm *virtv1.VirtualMachine) (*virtv1.VirtualMachine, er
 
 	utils.SetDefaultVolumeDisk(&expandedVM.Spec.Template.Spec)
 
-	if err := vmispec.SetDefaultNetworkInterface(e.clusterConfig, &expandedVM.Spec.Template.Spec); err != nil {
+	if err := network.SetDefaultNetworkInterface(e.clusterConfig, &expandedVM.Spec.Template.Spec); err != nil {
 		return nil, err
 	}
 

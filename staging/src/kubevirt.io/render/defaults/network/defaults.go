@@ -17,7 +17,7 @@
  *
  */
 
-package vmispec
+package network
 
 import (
 	"fmt"

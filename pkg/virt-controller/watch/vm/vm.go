@@ -31,13 +31,14 @@ import (
 	"strings"
 	"time"
 
+	netvmispec "kubevirt.io/render/defaults/network"
+
 	"kubevirt.io/kubevirt/pkg/instancetype/revision"
 	"kubevirt.io/kubevirt/pkg/libvmi"
 	"kubevirt.io/kubevirt/pkg/liveupdate/memory"
 	"kubevirt.io/kubevirt/pkg/pointer"
 
 	netadmitter "kubevirt.io/kubevirt/pkg/network/admitter"
-	netvmispec "kubevirt.io/kubevirt/pkg/network/vmispec"
 	netvmliveupdate "kubevirt.io/kubevirt/pkg/network/vmliveupdate"
 	"kubevirt.io/kubevirt/pkg/virt-controller/watch/common"
 	watchutil "kubevirt.io/kubevirt/pkg/virt-controller/watch/util"

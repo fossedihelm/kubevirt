@@ -35,8 +35,8 @@ import (
 
 	virtv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/render/defaults"
+	"kubevirt.io/render/defaults/network"
 
-	"kubevirt.io/kubevirt/pkg/network/vmispec"
 	"kubevirt.io/kubevirt/pkg/util"
 	"kubevirt.io/kubevirt/pkg/virt-api/webhooks/mutating-webhook/mutators"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
@@ -133,7 +133,7 @@ func renderPod(vmi *virtv1.VirtualMachineInstance, config *virtconfig.ClusterCon
 		return nil, fmt.Errorf("failed to apply VMI mutations: %w", err)
 	}
 
-	if err := vmispec.SetDefaultNetworkInterface(config, &vmi.Spec); err != nil {
+	if err := network.SetDefaultNetworkInterface(config, &vmi.Spec); err != nil {
 		return nil, fmt.Errorf("failed to set default network: %w", err)
 	}
 
