@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = ["render.go"],
-    importpath = "kubevirt.io/kubevirt/pkg/render",
+    importpath = "kubevirt.io/render",
     visibility = ["//visibility:public"],
     deps = [
         "//pkg/defaults:go_default_library",

@@ -218,6 +218,7 @@ replace (
 
 	kubevirt.io/api => ./staging/src/kubevirt.io/api
 	kubevirt.io/client-go => ./staging/src/kubevirt.io/client-go
+	kubevirt.io/render => ./staging/src/kubevirt.io/render
 )
 
 tool (
