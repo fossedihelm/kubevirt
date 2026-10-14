@@ -31,6 +31,7 @@ import (
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/log"
 
+	"kubevirt.io/kubevirt/pkg/safepath"
 	virtcache "kubevirt.io/kubevirt/pkg/virt-handler/cache"
 	cmdclient "kubevirt.io/kubevirt/pkg/virt-handler/cmd-client"
 	"kubevirt.io/kubevirt/pkg/virt-handler/isolation"
@@ -103,6 +104,16 @@ func (l *launcherClientsManager) verifyLauncherClient(vmi *v1.VirtualMachineInst
 	}
 
 	log.Log.Object(vmi).Warningf("Ping vmi failed with %s", err.Error())
+
+	clientInfo, exists := l.launcherClients.Load(vmi.UID)
+	if exists {
+		if _, socketErr := safepath.NewPathNoFollow(clientInfo.SocketFile); socketErr != nil {
+			return markIrrecoverable(fmt.Errorf("%w %s.", cmdclient.ErrNoSocketFound, vmi.UID))
+		}
+
+		return err
+	}
+
 	if _, socketErr := cmdclient.FindSocket(vmi); socketErr != nil {
 		if errors.Is(socketErr, cmdclient.ErrNoSocketFound) {
 			return markIrrecoverable(socketErr)

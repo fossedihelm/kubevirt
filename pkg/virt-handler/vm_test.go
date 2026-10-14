@@ -3531,6 +3531,9 @@ var _ = Describe("VirtualMachineInstance", func() {
 			// This should result in attempting to kill the virtual machine
 			mockHotplugVolumeMounter.EXPECT().UnmountAll(gomock.Any(), mockCgroupManager).Return(nil)
 
+			// Sanity check: the domain is in the store before the sync runs
+			Expect(controller.domainStore.List()).ToNot(BeEmpty())
+
 			sanityExecuteNoDomain()
 
 			// domainAlive was set to false, triggering deleteVM which removes the domain from the store

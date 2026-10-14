@@ -328,8 +328,7 @@ var _ = Describe("GetVerifiedLauncherClient FindSocket check", func() {
 		// Don't create the socket file, so we can check FindSocket is not performed
 
 		// Create mock client that succeeds on Ping
-		ctrl := gomock.NewController(GinkgoT())
-		mockClient := cmdclient.NewMockLauncherClient(ctrl)
+		mockClient := cmdclient.NewMockLauncherClient(gomock.NewController(GinkgoT()))
 		mockClient.EXPECT().Ping().Return(nil)
 
 		// Store the client in the manager
@@ -356,8 +355,7 @@ var _ = Describe("GetVerifiedLauncherClient FindSocket check", func() {
 			Expect(f.Close()).To(Succeed())
 
 			// Create mock client that fails on Ping
-			ctrl := gomock.NewController(GinkgoT())
-			mockClient := cmdclient.NewMockLauncherClient(ctrl)
+			mockClient := cmdclient.NewMockLauncherClient(gomock.NewController(GinkgoT()))
 			pingErr := fmt.Errorf("connection refused")
 			mockClient.EXPECT().Ping().Return(pingErr)
 
