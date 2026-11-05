@@ -740,6 +740,39 @@ var _ = Describe("VirtualMachineInstance migration target", func() {
 		sanityExecute()
 	})
 
+	It("should release the target node claim when a migration fails before its domain ran", func() {
+		vmi := api2.NewMinimalVMI("testvmi")
+		vmi.UID = vmiTestUUID
+		vmi.ObjectMeta.ResourceVersion = "1"
+		vmi.Status.Phase = v1.Running
+		vmi.Labels = make(map[string]string)
+		vmi.Status.NodeName = "othernode"
+		vmi.Labels[v1.MigrationTargetNodeNameLabel] = host
+		vmi.Status.MigrationState = &v1.VirtualMachineInstanceMigrationState{
+			TargetNode:   host,
+			SourceNode:   "othernode",
+			MigrationUID: "123",
+			Failed:       true,
+			Completed:    true,
+			EndTimestamp: pointer.P(metav1.Now()),
+		}
+		vmi = addActivePods(vmi, podTestUUID, host)
+
+		// The target domain was defined but never ran. finalCleanup still has to be
+		// reached: dropping the migration target node label is how this node stops
+		// claiming the VMI, and nothing else removes it.
+		domain := api.NewMinimalDomainWithUUID("testvmi", vmiTestUUID)
+		domain.Status.Status = api.Shutoff
+		addVMI(vmi, domain)
+
+		client.EXPECT().SignalTargetPodCleanup(gomock.Any())
+		controller.Execute()
+
+		updatedVMI, err := virtfakeClient.KubevirtV1().VirtualMachineInstances(metav1.NamespaceDefault).Get(context.TODO(), vmi.Name, metav1.GetOptions{})
+		Expect(err).NotTo(HaveOccurred())
+		Expect(updatedVMI.Labels).ToNot(HaveKey(v1.MigrationTargetNodeNameLabel))
+	})
+
 	It("should wait for source abort completion before marking migration failed on target", func() {
 		const targetMigrationUID = types.UID("target-migration-uid")
 
