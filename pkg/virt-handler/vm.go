@@ -43,7 +43,6 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/errors"
 	"k8s.io/apimachinery/pkg/util/sets"
-	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/record"
@@ -210,24 +209,6 @@ func NewVirtualMachineController(
 		migrationProxy:           migrationProxy,
 	}
 
-	_, err = vmiInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addDeleteFunc,
-		DeleteFunc: c.addDeleteFunc,
-		UpdateFunc: c.updateFunc,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	_, err = domainInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    c.addDomainFunc,
-		DeleteFunc: c.deleteDomainFunc,
-		UpdateFunc: c.updateDomainFunc,
-	})
-	if err != nil {
-		return nil, err
-	}
-
 	permissions := "rw"
 	if cgroups.IsCgroup2UnifiedMode() {
 		// Need 'rwm' permissions otherwise ebpf filtering program attached by runc
@@ -252,8 +233,9 @@ func NewVirtualMachineController(
 	return c, nil
 }
 
-func (c *VirtualMachineController) Run(threadiness int, stopCh chan struct{}) {
-	defer c.queue.ShutDown()
+// Run starts the node-level services the VM controller owns. The VMI work itself
+// is driven by the Arbiter, which owns the shared workqueue and its workers.
+func (c *VirtualMachineController) Run(stopCh chan struct{}) {
 	c.logger.Info("Starting virt-handler vms controller.")
 
 	go c.deviceManagerController.Run(stopCh)
@@ -262,32 +244,11 @@ func (c *VirtualMachineController) Run(threadiness int, stopCh chan struct{}) {
 
 	cache.WaitForCacheSync(stopCh, c.hasSynced)
 
-	// queue keys for previous Domains on the host that no longer exist
-	// in the cache. This ensures we perform local cleanup of deleted VMs.
-	for _, domain := range c.domainStore.List() {
-		d := domain.(*api.Domain)
-		vmiRef := v1.NewVMIReferenceWithUUID(
-			d.ObjectMeta.Namespace,
-			d.ObjectMeta.Name,
-			d.Spec.Metadata.KubeVirt.UID)
-
-		key := controller.VirtualMachineInstanceKey(vmiRef)
-
-		_, exists, _ := c.vmiStore.GetByKey(key)
-		if !exists {
-			c.queue.Add(key)
-		}
-	}
 	c.multipathSocketMonitor.Run()
 
 	heartBeatDone := c.heartBeat.Run(c.heartBeatInterval, stopCh)
 
 	go c.ioErrorRetryManager.Run(stopCh)
-
-	// Start the actual work
-	for i := 0; i < threadiness; i++ {
-		go wait.Until(c.runWorker, time.Second, stopCh)
-	}
 
 	<-heartBeatDone
 	<-stopCh
@@ -295,58 +256,13 @@ func (c *VirtualMachineController) Run(threadiness int, stopCh chan struct{}) {
 	c.logger.Info("Stopping virt-handler vms controller.")
 }
 
-func (c *VirtualMachineController) runWorker() {
-	for c.Execute() {
-	}
-}
-
-func (c *VirtualMachineController) Execute() bool {
-	key, quit := c.queue.Get()
-	if quit {
-		return false
-	}
-	defer c.queue.Done(key)
-
-	state, err := c.snapshot(key)
-	if err == nil {
-		err = c.execute(state)
-	}
-
-	if err != nil {
-		c.logger.Reason(err).Infof("re-enqueuing VirtualMachineInstance %v", key)
-		c.queue.AddRateLimited(key)
-	} else {
-		c.logger.V(4).Infof("processed VirtualMachineInstance %v", key)
-		c.queue.Forget(key)
-	}
-	return true
-}
-
+// execute runs the VM lifecycle loop for a VMI the Arbiter has decided this
+// controller owns. It is never called while a migration this node participates in
+// is in flight, so there is no migration gate left here.
 func (c *VirtualMachineController) execute(state *vmiState) error {
 	key, vmi, vmiExists := state.key, state.vmi, state.vmiExists
-
-	if !vmiExists {
-		// the vmiInformer probably has to catch up to the domainInformer
-		// which already sees the vmi, so let's fetch it from the global
-		// vmi informer to make sure the vmi has actually been deleted
-		c.logger.V(4).Infof("fetching vmi for key %v from the global informer", key)
-		obj, exists, err := c.vmiGlobalStore.GetByKey(key)
-		if err != nil {
-			return err
-		}
-		if exists {
-			vmi = obj.(*v1.VirtualMachineInstance)
-		}
-		vmiExists = exists
-	}
-
-	if !vmiExists {
-		c.vmiExpectations.DeleteExpectations(key)
-	} else if !c.vmiExpectations.SatisfiedExpectations(key) {
-		return nil
-	}
-
 	domain, domainExists, domainCachedUID := state.domain, state.domainExists, state.domainCachedUID
+
 	c.logger.Object(vmi).V(4).Infof("domain exists %v", domainExists)
 
 	if !vmiExists && string(domainCachedUID) != "" {
@@ -404,21 +320,8 @@ func (c *VirtualMachineController) execute(state *vmiState) error {
 		}
 	}
 
-	if vmi.DeletionTimestamp == nil && isMigrationInProgress(vmi, domain) {
-		c.logger.V(4).Infof("ignoring key %v as migration is in progress", key)
-		return nil
-	}
-
 	if vmiExists && !c.isVMIOwnedByNode(vmi) {
 		c.logger.Object(vmi).V(4).Info("ignoring vmi as it is not owned by this node")
-		return nil
-	}
-
-	// Skip a migration source only while the migration is still ongoing. A decentralized
-	// source keeps IsMigrationSource()==true even once terminal, so without the IsFinal()
-	// guard sync() never runs and the source ghost record leaks - and MigrationSourceController never deletes it
-	if vmiExists && vmi.IsMigrationSource() && !vmi.IsFinal() {
-		c.logger.Object(vmi).V(4).Info("ignoring vmi as it is a migration source")
 		return nil
 	}
 
@@ -2346,55 +2249,6 @@ func (c *VirtualMachineController) calculateVmPhaseForStatusReason(domain *api.D
 		}
 	}
 	return vmi.Status.Phase, nil
-}
-
-func (c *VirtualMachineController) addDeleteFunc(obj interface{}) {
-	key, err := controller.KeyFunc(obj)
-	if err == nil {
-		c.vmiExpectations.SetExpectations(key, 0, 0)
-		c.queue.Add(key)
-	}
-}
-
-func (c *VirtualMachineController) updateFunc(_, new interface{}) {
-	key, err := controller.KeyFunc(new)
-	if err == nil {
-		c.vmiExpectations.SetExpectations(key, 0, 0)
-		c.queue.Add(key)
-	}
-}
-
-func (c *VirtualMachineController) addDomainFunc(obj interface{}) {
-	key, err := controller.KeyFunc(obj)
-	if err == nil {
-		c.queue.Add(key)
-	}
-}
-func (c *VirtualMachineController) deleteDomainFunc(obj interface{}) {
-	domain, ok := obj.(*api.Domain)
-	if !ok {
-		tombstone, ok := obj.(cache.DeletedFinalStateUnknown)
-		if !ok {
-			c.logger.Reason(fmt.Errorf("couldn't get object from tombstone %+v", obj)).Error("Failed to process delete notification")
-			return
-		}
-		domain, ok = tombstone.Obj.(*api.Domain)
-		if !ok {
-			c.logger.Reason(fmt.Errorf("tombstone contained object that is not a domain %#v", obj)).Error("Failed to process delete notification")
-			return
-		}
-	}
-	c.logger.V(3).Object(domain).Info("Domain deleted")
-	key, err := controller.KeyFunc(obj)
-	if err == nil {
-		c.queue.Add(key)
-	}
-}
-func (c *VirtualMachineController) updateDomainFunc(_, new interface{}) {
-	key, err := controller.KeyFunc(new)
-	if err == nil {
-		c.queue.Add(key)
-	}
 }
 
 func (c *VirtualMachineController) isHostModelMigratable(vmi *v1.VirtualMachineInstance) error {
