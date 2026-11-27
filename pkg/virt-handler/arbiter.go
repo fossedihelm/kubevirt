@@ -21,6 +21,7 @@ package virthandler
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"k8s.io/apimachinery/pkg/types"
@@ -206,13 +207,15 @@ type Arbiter struct {
 	host   string
 	queue  workqueue.TypedRateLimitingInterface[string]
 
-	// A VMI on this node is served by the source-scoped informer, the target-scoped
-	// informer, or - while a hand-over is in progress and neither label points here
-	// yet - only by the cluster-wide one.
-	vmiSourceStore cache.Store
-	vmiTargetStore cache.Store
-	vmiGlobalStore cache.Store
-	domainStore    cache.Store
+	// One cluster-wide VMI informer serves the whole pass. Its events are
+	// filtered by the node a VMI claims (see claimsNode), which replaces the
+	// two node-scoped informers and their selector watches: those could not be
+	// merged into one, because label selectors cannot express the OR of the two
+	// labels. One cache also means one copy of the truth - a label moving
+	// between nodes is a single update rather than a delete on one watch
+	// racing an add on another.
+	vmiStore    cache.Store
+	domainStore cache.Store
 
 	vmiExpectations *controller.UIDTrackingControllerExpectations
 
@@ -227,10 +230,8 @@ func NewArbiter(
 	host string,
 	queue workqueue.TypedRateLimitingInterface[string],
 	vmiExpectations *controller.UIDTrackingControllerExpectations,
-	vmiSourceInformer cache.SharedIndexInformer,
-	vmiTargetInformer cache.SharedIndexInformer,
+	vmiInformer cache.SharedIndexInformer,
 	domainInformer cache.SharedInformer,
-	vmiGlobalStore cache.Store,
 	vmController *VirtualMachineController,
 	sourceController *MigrationSourceController,
 	targetController *MigrationTargetController,
@@ -241,37 +242,30 @@ func NewArbiter(
 		host:             host,
 		queue:            queue,
 		vmiExpectations:  vmiExpectations,
-		vmiSourceStore:   vmiSourceInformer.GetStore(),
-		vmiTargetStore:   vmiTargetInformer.GetStore(),
-		vmiGlobalStore:   vmiGlobalStore,
+		vmiStore:         vmiInformer.GetStore(),
 		domainStore:      domainInformer.GetStore(),
 		vmController:     vmController,
 		sourceController: sourceController,
 		targetController: targetController,
 		hasSynced: func() bool {
-			return vmiSourceInformer.HasSynced() &&
-				vmiTargetInformer.HasSynced() &&
-				domainInformer.HasSynced()
+			return vmiInformer.HasSynced() && domainInformer.HasSynced()
 		},
 	}
 
-	for _, informer := range []cache.SharedIndexInformer{vmiSourceInformer, vmiTargetInformer} {
-		_, err := informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-			AddFunc:    a.addVMIFunc,
-			DeleteFunc: a.deleteVMIFunc,
-			UpdateFunc: a.updateVMIFunc,
-		})
-		if err != nil {
-			return nil, err
-		}
+	_, err := vmiInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+		AddFunc:    a.addVMIFunc,
+		DeleteFunc: a.deleteVMIFunc,
+		UpdateFunc: a.updateVMIFunc,
+	})
+	if err != nil {
+		return nil, err
 	}
 
-	_, err := domainInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	if _, err := domainInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    a.addDomainFunc,
 		DeleteFunc: a.deleteDomainFunc,
 		UpdateFunc: a.updateDomainFunc,
-	})
-	if err != nil {
+	}); err != nil {
 		return nil, err
 	}
 
@@ -294,13 +288,14 @@ func (a *Arbiter) Run(threadiness int, stopCh chan struct{}) {
 	a.logger.Info("Stopping virt-handler arbiter.")
 }
 
-// enqueueUnclaimedDomains queues the domains on this host that neither node-scoped
-// informer serves, so local cleanup still happens for VMIs that went away, or
+// enqueueUnclaimedDomains queues the domains on this host whose VMI does not
+// claim this node, so local cleanup still happens for VMIs that went away, or
 // migrated away, while virt-handler was down.
 //
-// It deliberately does not consult the cluster-wide store: a VMI that finished
-// migrating off this node is still in it, and the source domain it left behind is
-// precisely what has to be reaped here.
+// The claim check is what keeps a VMI that finished migrating off this node
+// from holding its source domain back: the VMI is still in the store, but it
+// no longer claims this node, and the domain it left behind is precisely what
+// has to be reaped here.
 func (a *Arbiter) enqueueUnclaimedDomains() {
 	for _, obj := range a.domainStore.List() {
 		d := obj.(*api.Domain)
@@ -311,9 +306,9 @@ func (a *Arbiter) enqueueUnclaimedDomains() {
 
 		key := controller.VirtualMachineInstanceKey(vmiRef)
 
-		_, onSource, _ := a.vmiSourceStore.GetByKey(key)
-		_, onTarget, _ := a.vmiTargetStore.GetByKey(key)
-		if !onSource && !onTarget {
+		vmiObj, exists, _ := a.vmiStore.GetByKey(key)
+		vmi, isVMI := vmiObj.(*v1.VirtualMachineInstance)
+		if !exists || !isVMI || !claimsNode(vmi, a.host) {
 			a.queue.Add(key)
 		}
 	}
@@ -404,18 +399,12 @@ func (a *Arbiter) snapshot(key string) (*vmiState, error) {
 }
 
 func (a *Arbiter) getVMI(key string) (*v1.VirtualMachineInstance, bool, error) {
-	// The target-scoped informer selects on the migration target node label, which is
-	// what the role decision hinges on, so its copy wins when it has one. The
-	// cluster-wide store is only a fallback for the moment between a VMI losing one
-	// node-scoped label and gaining the other.
-	for _, store := range []cache.Store{a.vmiTargetStore, a.vmiSourceStore, a.vmiGlobalStore} {
-		obj, exists, err := store.GetByKey(key)
-		if err != nil {
-			return nil, false, err
-		}
-		if exists {
-			return obj.(*v1.VirtualMachineInstance), true, nil
-		}
+	obj, exists, err := a.vmiStore.GetByKey(key)
+	if err != nil {
+		return nil, false, err
+	}
+	if exists {
+		return obj.(*v1.VirtualMachineInstance), true, nil
 	}
 
 	namespace, name, err := cache.SplitMetaNamespaceKey(key)
@@ -426,16 +415,76 @@ func (a *Arbiter) getVMI(key string) (*v1.VirtualMachineInstance, bool, error) {
 	return libvmi.New(libvmi.WithName(name), libvmi.WithNamespace(namespace)), false, nil
 }
 
+// claimsNode reports whether vmi is this node's business: scheduled here, or
+// migrating into here. It is the client-side equivalent of the label selectors
+// the node-scoped informers selected on.
+func claimsNode(vmi *v1.VirtualMachineInstance, host string) bool {
+	return slices.Contains(vmiClaims(vmi), host)
+}
+
+// vmiClaims returns the nodes vmi claims: the node it is scheduled on and the
+// node it is migrating into.
+func vmiClaims(vmi *v1.VirtualMachineInstance) []string {
+	var claims []string
+	if node := vmi.Labels[v1.NodeNameLabel]; node != "" {
+		claims = append(claims, node)
+	}
+	if target := vmi.Labels[v1.MigrationTargetNodeNameLabel]; target != "" {
+		claims = append(claims, target)
+	}
+	return claims
+}
+
+// addVMIFunc and its siblings are called for every VMI event in the cluster:
+// the informer is cluster-wide, and the node scoping that two selector-based
+// informers used to provide server-side is a client-side filter here.
 func (a *Arbiter) addVMIFunc(obj any) {
-	a.enqueueVMI(obj)
+	if vmi, ok := obj.(*v1.VirtualMachineInstance); ok && claimsNode(vmi, a.host) {
+		a.enqueueVMI(vmi)
+	}
+}
+
+func (a *Arbiter) updateVMIFunc(old, new any) {
+	oldVMI, oldIsVMI := old.(*v1.VirtualMachineInstance)
+	newVMI, newIsVMI := new.(*v1.VirtualMachineInstance)
+
+	// A VMI that just stopped claiming this node is enqueued anyway: the
+	// node-scoped informers this replaces delivered that transition as a
+	// delete, and losing it would leave the key waiting for the next domain
+	// event instead of the hand-over itself.
+	if (newIsVMI && claimsNode(newVMI, a.host)) || (oldIsVMI && claimsNode(oldVMI, a.host)) {
+		a.enqueueVMI(new)
+	}
 }
 
 func (a *Arbiter) deleteVMIFunc(obj any) {
-	a.enqueueVMI(obj)
+	vmi, ok := asVMI(obj)
+	switch {
+	case ok && vmi != nil:
+		// The last known state decides, as it did for the node-scoped informers.
+		if claimsNode(vmi, a.host) {
+			a.enqueueVMI(vmi)
+		}
+	default:
+		// A re-list tombstone whose object is gone: a VMI deleted while the
+		// watch was down. Its key still extracts from the tombstone, and it
+		// cannot be checked against this node's claims, so enqueue it
+		// unconditionally - a snapshot of a VMI that is not this node's
+		// business is a cheap no-op.
+		if _, isTombstone := obj.(cache.DeletedFinalStateUnknown); isTombstone {
+			a.enqueueVMI(obj)
+		}
+	}
 }
 
-func (a *Arbiter) updateVMIFunc(_, new any) {
-	a.enqueueVMI(new)
+// asVMI unwraps re-list tombstones: the informer delivers them as-is, holding
+// the last known state of an object deleted while the watch was down.
+func asVMI(obj any) (*v1.VirtualMachineInstance, bool) {
+	if tombstone, ok := obj.(cache.DeletedFinalStateUnknown); ok {
+		obj = tombstone.Obj
+	}
+	vmi, ok := obj.(*v1.VirtualMachineInstance)
+	return vmi, ok
 }
 
 func (a *Arbiter) enqueueVMI(obj any) {

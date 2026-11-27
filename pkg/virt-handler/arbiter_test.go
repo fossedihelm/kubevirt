@@ -62,9 +62,7 @@ func newTestArbiter(base *BaseController, owners map[role]vmiController) *Arbite
 		host:             base.host,
 		queue:            base.queue,
 		vmiExpectations:  base.vmiExpectations,
-		vmiSourceStore:   base.vmiStore,
-		vmiTargetStore:   base.vmiStore,
-		vmiGlobalStore:   base.vmiStore,
+		vmiStore:         base.vmiStore,
 		domainStore:      base.domainStore,
 		vmController:     noopController{},
 		sourceController: noopController{},
@@ -93,9 +91,7 @@ var _ = Describe("Arbiter restart recovery", func() {
 
 	var (
 		arbiter     *Arbiter
-		sourceStore cache.Store
-		targetStore cache.Store
-		globalStore cache.Store
+		vmiStore    cache.Store
 		domainStore cache.Store
 		queue       workqueue.TypedRateLimitingInterface[string]
 		vmi         *v1.VirtualMachineInstance
@@ -104,9 +100,7 @@ var _ = Describe("Arbiter restart recovery", func() {
 	)
 
 	BeforeEach(func() {
-		sourceStore = cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc)
-		targetStore = cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc)
-		globalStore = cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc)
+		vmiStore = cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc)
 		domainStore = cache.NewStore(cache.DeletionHandlingMetaNamespaceKeyFunc)
 		queue = workqueue.NewTypedRateLimitingQueueWithConfig(
 			workqueue.DefaultTypedControllerRateLimiter[string](),
@@ -114,13 +108,11 @@ var _ = Describe("Arbiter restart recovery", func() {
 		)
 
 		arbiter = &Arbiter{
-			logger:         log.Log.With("controller", "arbiter"),
-			host:           host,
-			queue:          queue,
-			vmiSourceStore: sourceStore,
-			vmiTargetStore: targetStore,
-			vmiGlobalStore: globalStore,
-			domainStore:    domainStore,
+			logger:      log.Log.With("controller", "arbiter"),
+			host:        host,
+			queue:       queue,
+			vmiStore:    vmiStore,
+			domainStore: domainStore,
 		}
 
 		vmi = libvmi.New(libvmi.WithName("testvmi"), libvmi.WithNamespace(metav1.NamespaceDefault))
@@ -131,13 +123,12 @@ var _ = Describe("Arbiter restart recovery", func() {
 	})
 
 	// virt-handler can die on the source while a migration is in flight and come back
-	// after it finished. By then the VMI belongs to the target node, so neither
-	// node-scoped informer serves it here - but the source domain it left behind
-	// still has to be reaped locally.
+	// after it finished. By then the VMI claims the target node, not this one - but
+	// the source domain it left behind still has to be reaped locally.
 	It("should queue a domain left behind by a VMI that migrated away while it was down", func() {
 		vmi.Status.NodeName = otherHost
 		vmi.Labels = map[string]string{v1.NodeNameLabel: otherHost}
-		Expect(globalStore.Add(vmi)).To(Succeed())
+		Expect(vmiStore.Add(vmi)).To(Succeed())
 
 		arbiter.enqueueUnclaimedDomains()
 
@@ -157,8 +148,7 @@ var _ = Describe("Arbiter restart recovery", func() {
 	It("should leave domains of VMIs this node still serves to the informers", func() {
 		vmi.Status.NodeName = host
 		vmi.Labels = map[string]string{v1.NodeNameLabel: host}
-		Expect(sourceStore.Add(vmi)).To(Succeed())
-		Expect(globalStore.Add(vmi)).To(Succeed())
+		Expect(vmiStore.Add(vmi)).To(Succeed())
 
 		arbiter.enqueueUnclaimedDomains()
 
@@ -167,8 +157,7 @@ var _ = Describe("Arbiter restart recovery", func() {
 
 	It("should leave domains of VMIs this node is the migration target of", func() {
 		vmi.Labels = map[string]string{v1.MigrationTargetNodeNameLabel: host}
-		Expect(targetStore.Add(vmi)).To(Succeed())
-		Expect(globalStore.Add(vmi)).To(Succeed())
+		Expect(vmiStore.Add(vmi)).To(Succeed())
 
 		arbiter.enqueueUnclaimedDomains()
 
@@ -207,15 +196,11 @@ var _ = Describe("Arbiter dispatch", func() {
 		sourceCtrl = &recordingController{}
 		targetCtrl = &recordingController{}
 		arbiter = &Arbiter{
-			logger:          log.Log.With("controller", "arbiter"),
-			host:            host,
-			queue:           workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "arbiter-test"}),
-			vmiExpectations: controller.NewUIDTrackingControllerExpectations(controller.NewControllerExpectations()),
-			// The role decision hinges on the VMI's content, not on which store
-			// served it, so one store stands in for all three.
-			vmiSourceStore:   vmiStore,
-			vmiTargetStore:   vmiStore,
-			vmiGlobalStore:   vmiStore,
+			logger:           log.Log.With("controller", "arbiter"),
+			host:             host,
+			queue:            workqueue.NewTypedRateLimitingQueueWithConfig(workqueue.DefaultTypedControllerRateLimiter[string](), workqueue.TypedRateLimitingQueueConfig[string]{Name: "arbiter-test"}),
+			vmiExpectations:  controller.NewUIDTrackingControllerExpectations(controller.NewControllerExpectations()),
+			vmiStore:         vmiStore,
 			domainStore:      domainStore,
 			vmController:     vmCtrl,
 			sourceController: sourceCtrl,
@@ -304,6 +289,128 @@ var _ = Describe("Arbiter dispatch", func() {
 		for _, ctrl := range []*recordingController{vmCtrl, sourceCtrl, targetCtrl} {
 			Expect(ctrl.keys).To(BeEmpty())
 		}
+	})
+})
+
+// The Arbiter's event handlers run against the cluster-wide informer, so they
+// filter for the VMIs this node claims - the labels the two node-scoped
+// informers used to select on server-side.
+var _ = Describe("Arbiter enqueue filter", func() {
+	const (
+		host        = "thisnode"
+		otherHost   = "othernode"
+		expectedKey = metav1.NamespaceDefault + "/testvmi"
+	)
+
+	var (
+		arbiter *Arbiter
+		queue   workqueue.TypedRateLimitingInterface[string]
+	)
+
+	newVMI := func(node string) *v1.VirtualMachineInstance {
+		vmi := libvmi.New(libvmi.WithName("testvmi"), libvmi.WithNamespace(metav1.NamespaceDefault))
+		vmi.Status.Phase = v1.Running
+		vmi.Status.NodeName = node
+		vmi.Labels = map[string]string{v1.NodeNameLabel: node}
+		return vmi
+	}
+
+	newTargetVMI := func() *v1.VirtualMachineInstance {
+		vmi := newVMI(otherHost)
+		vmi.Labels[v1.MigrationTargetNodeNameLabel] = host
+		return vmi
+	}
+
+	BeforeEach(func() {
+		queue = workqueue.NewTypedRateLimitingQueueWithConfig(
+			workqueue.DefaultTypedControllerRateLimiter[string](),
+			workqueue.TypedRateLimitingQueueConfig[string]{Name: "arbiter-test"},
+		)
+		arbiter = &Arbiter{
+			logger:          log.Log.With("controller", "arbiter"),
+			host:            host,
+			queue:           queue,
+			vmiExpectations: controller.NewUIDTrackingControllerExpectations(controller.NewControllerExpectations()),
+		}
+	})
+
+	expectEnqueued := func() {
+		ExpectWithOffset(1, queue.Len()).To(Equal(1))
+		key, _ := queue.Get()
+		ExpectWithOffset(1, key).To(Equal(expectedKey))
+	}
+
+	expectIdle := func() {
+		ExpectWithOffset(1, queue.Len()).To(BeZero())
+	}
+
+	It("should enqueue a VMI scheduled on this node", func() {
+		arbiter.addVMIFunc(newVMI(host))
+		expectEnqueued()
+	})
+
+	It("should enqueue a VMI migrating into this node", func() {
+		arbiter.addVMIFunc(newTargetVMI())
+		expectEnqueued()
+	})
+
+	It("should not enqueue a VMI that claims another node", func() {
+		arbiter.addVMIFunc(newVMI(otherHost))
+		expectIdle()
+	})
+
+	It("should enqueue a VMI that starts claiming this node", func() {
+		arbiter.updateVMIFunc(newVMI(otherHost), newVMI(host))
+		expectEnqueued()
+	})
+
+	// A VMI handing over to another node arrives here as an update whose new
+	// state no longer claims this node. The node-scoped informers this filter
+	// replaces delivered that transition as a delete, and the source still has
+	// work to do when it happens, so the old state claims it too.
+	It("should enqueue a VMI that stops claiming this node", func() {
+		arbiter.updateVMIFunc(newVMI(host), newVMI(otherHost))
+		expectEnqueued()
+	})
+
+	It("should not enqueue an update between other nodes", func() {
+		arbiter.updateVMIFunc(newVMI("thirdnode"), newVMI(otherHost))
+		expectIdle()
+	})
+
+	It("should enqueue the deletion of a VMI that claims this node", func() {
+		arbiter.deleteVMIFunc(newVMI(host))
+		expectEnqueued()
+	})
+
+	It("should not enqueue the deletion of a VMI that claims another node", func() {
+		arbiter.deleteVMIFunc(newVMI(otherHost))
+		expectIdle()
+	})
+
+	// A VMI deleted while the watch was down arrives as a re-list tombstone
+	// holding its last known state.
+	It("should enqueue a tombstone whose last known state claims this node", func() {
+		tombstone := cache.DeletedFinalStateUnknown{Key: expectedKey, Obj: newVMI(host)}
+		arbiter.deleteVMIFunc(tombstone)
+		expectEnqueued()
+	})
+
+	It("should not enqueue a tombstone whose last known state claims another node", func() {
+		tombstone := cache.DeletedFinalStateUnknown{Key: expectedKey, Obj: newVMI(otherHost)}
+		arbiter.deleteVMIFunc(tombstone)
+		expectIdle()
+	})
+
+	// The object can be gone entirely when the tombstone is built. Its key
+	// still extracts, and the claim check is impossible, so the VMI is enqueued
+	// unconditionally: a snapshot of a VMI that is not this node's business is
+	// a cheap no-op, while skipping it would lose the very reaping this path
+	// exists for.
+	It("should enqueue a tombstone that carries no object", func() {
+		tombstone := cache.DeletedFinalStateUnknown{Key: expectedKey}
+		arbiter.deleteVMIFunc(tombstone)
+		expectEnqueued()
 	})
 })
 
