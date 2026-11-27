@@ -95,9 +95,11 @@ var _ = Describe("Snapshot overlay request", func() {
 })
 
 var _ = Describe("Lifecycle handler", func() {
+	const nodeName = "thisnode"
+
 	DescribeTable("should return not found for a VMI missing from the store",
 		func(handler func(*LifecycleHandler) restful.RouteFunction) {
-			lh := NewLifecycleHandler(nil, cache.NewStore(cache.MetaNamespaceKeyFunc), "")
+			lh := NewLifecycleHandler(nil, cache.NewStore(cache.MetaNamespaceKeyFunc), nodeName, "")
 
 			httpRequest, err := http.NewRequest(http.MethodPut, "/", nil)
 			Expect(err).ToNot(HaveOccurred())
@@ -114,6 +116,32 @@ var _ = Describe("Lifecycle handler", func() {
 		Entry("unpause", func(lh *LifecycleHandler) restful.RouteFunction { return lh.UnpauseHandler }),
 		Entry("freeze", func(lh *LifecycleHandler) restful.RouteFunction { return lh.FreezeHandler }),
 		Entry("reset", func(lh *LifecycleHandler) restful.RouteFunction { return lh.ResetHandler }),
+		Entry("guest info", func(lh *LifecycleHandler) restful.RouteFunction { return lh.GetGuestInfo }),
+	)
+
+	// The store is cluster-wide; a VMI that runs elsewhere is not this node's
+	// to serve, exactly as it was absent from the node-scoped store before.
+	DescribeTable("should return not found for a VMI running on another node",
+		func(handler func(*LifecycleHandler) restful.RouteFunction) {
+			vmiStore := cache.NewStore(cache.MetaNamespaceKeyFunc)
+			vmi := api.NewMinimalVMI("testvm")
+			vmi.Status.NodeName = "othernode"
+			Expect(vmiStore.Add(vmi)).To(Succeed())
+
+			lh := NewLifecycleHandler(nil, vmiStore, nodeName, "")
+
+			httpRequest, err := http.NewRequest(http.MethodPut, "/", nil)
+			Expect(err).ToNot(HaveOccurred())
+			request := restful.NewRequest(httpRequest)
+			request.PathParameters()["namespace"] = "default"
+			request.PathParameters()["name"] = "testvm"
+			recorder := httptest.NewRecorder()
+			response := restful.NewResponse(recorder)
+
+			Expect(func() { handler(lh)(request, response) }).ToNot(Panic())
+			Expect(recorder.Code).To(Equal(http.StatusNotFound))
+		},
+		Entry("pause", func(lh *LifecycleHandler) restful.RouteFunction { return lh.PauseHandler }),
 		Entry("guest info", func(lh *LifecycleHandler) restful.RouteFunction { return lh.GetGuestInfo }),
 	)
 })

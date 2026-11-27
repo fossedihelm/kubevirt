@@ -272,8 +272,6 @@ func (app *virtHandlerApp) Run() {
 	factory := controller.NewKubeInformerFactory(app.virtClient.RestClient(), app.virtClient, app.k8sClient, nil, app.namespace)
 
 	vmiInformer := factory.VMI()
-	vmiSourceInformer := factory.VMISourceHost(app.HostOverride)
-	vmiTargetInformer := factory.VMITargetHost(app.HostOverride)
 	pluginInformer := factory.Plugin()
 
 	checkpointPath := filepath.Join(app.VirtPrivateDir, "ghost-records")
@@ -397,8 +395,6 @@ func (app *virtHandlerApp) Run() {
 	cache.WaitForCacheSync(
 		stop,
 		vmiInformer.HasSynced,
-		vmiSourceInformer.HasSynced,
-		vmiTargetInformer.HasSynced,
 		domainSharedInformer.HasSynced,
 		factory.CRD().HasSynced,
 		factory.KubeVirt().HasSynced,
@@ -437,7 +433,7 @@ func (app *virtHandlerApp) Run() {
 		vmiQueue,
 		vmiExpectations,
 		launcherClientsManager,
-		vmiSourceInformer,
+		vmiInformer,
 		domainSharedInformer,
 		app.clusterConfig,
 		podIsolationDetector,
@@ -489,7 +485,7 @@ func (app *virtHandlerApp) Run() {
 		vmiQueue,
 		vmiExpectations,
 		launcherClientsManager,
-		vmiTargetInformer,
+		vmiInformer,
 		domainSharedInformer,
 		app.clusterConfig,
 		podIsolationDetector,
@@ -521,8 +517,7 @@ func (app *virtHandlerApp) Run() {
 		app.HostOverride,
 		app.KubeletRoot,
 		launcherClientsManager,
-		vmiSourceInformer,
-		vmiInformer.GetStore(),
+		vmiInformer,
 		domainSharedInformer,
 		app.MaxDevices,
 		app.clusterConfig,
@@ -573,7 +568,8 @@ func (app *virtHandlerApp) Run() {
 	go app.runPrometheusServer(promErrCh)
 
 	vmStatsHandler := rest.NewVMStatsHandler(
-		vmiSourceInformer.GetStore(),
+		vmiInformer.GetIndexer(),
+		app.HostOverride,
 		app.clusterConfig,
 		collector.NewConcurrentCollector(app.MaxRequestsInFlight),
 	)
@@ -581,7 +577,8 @@ func (app *virtHandlerApp) Run() {
 
 	lifecycleHandler := rest.NewLifecycleHandler(
 		recorder,
-		vmiSourceInformer.GetStore(),
+		vmiInformer.GetStore(),
+		app.HostOverride,
 		app.VirtShareDir,
 	)
 
@@ -635,7 +632,8 @@ func (app *virtHandlerApp) Run() {
 
 	consoleHandler := rest.NewConsoleHandler(
 		podIsolationDetector,
-		vmiSourceInformer.GetStore(),
+		vmiInformer.GetStore(),
+		app.HostOverride,
 		vsock.NewDefaultDialer(podIsolationDetector, app.vsockClientCertManager, app.caManager),
 	)
 

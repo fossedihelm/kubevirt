@@ -125,7 +125,6 @@ type VirtualMachineController struct {
 	lastSeenPanicCount       sync.Map
 	netConf                  netconf
 	sriovHotplugExecutorPool *executor.RateLimitedExecutorPool
-	vmiGlobalStore           cache.Store
 	multipathSocketMonitor   *multipathmonitor.MultipathSocketMonitor
 	cbtHandler               *CBTHandler
 	migrationProxy           proxyCleaner
@@ -150,7 +149,6 @@ func NewVirtualMachineController(
 	kubeletRoot string,
 	launcherClients launcherclients.LauncherClientsManager,
 	vmiInformer cache.SharedIndexInformer,
-	vmiGlobalStore cache.Store,
 	domainInformer cache.SharedInformer,
 	maxDevices int,
 	clusterConfig *virtconfig.ClusterConfig,
@@ -206,7 +204,6 @@ func NewVirtualMachineController(
 		heartBeatInterval:        1 * time.Minute,
 		netConf:                  netConf,
 		sriovHotplugExecutorPool: executor.NewRateLimitedExecutorPool(executor.NewExponentialLimitedBackoffCreator()),
-		vmiGlobalStore:           vmiGlobalStore,
 		multipathSocketMonitor:   multipathmonitor.NewMultipathSocketMonitor(),
 		cbtHandler:               cbtHandler,
 		pluginExecutor:           pluginExecutor,

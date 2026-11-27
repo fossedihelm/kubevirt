@@ -227,6 +227,10 @@ func (c *BaseController) InvalidatePluginsCache() {
 	c.pluginCache.data = nil
 }
 
+// getVMIFromCache answers whether this node still has business with the VMI:
+// the store is cluster-wide, so existing is not enough - the VMI also has to
+// run here, which is what membership in the node-scoped store it replaces
+// used to mean.
 func (c *BaseController) getVMIFromCache(key string) (vmi *v1.VirtualMachineInstance, exists bool, err error) {
 	obj, exists, err := c.vmiStore.GetByKey(key)
 	if err != nil {
@@ -242,6 +246,7 @@ func (c *BaseController) getVMIFromCache(key string) (vmi *v1.VirtualMachineInst
 		vmi = libvmi.New(libvmi.WithName(name), libvmi.WithNamespace(namespace))
 	} else {
 		vmi = obj.(*v1.VirtualMachineInstance)
+		exists = vmi.Status.NodeName == c.host
 	}
 	return vmi, exists, nil
 }

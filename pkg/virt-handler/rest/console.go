@@ -49,6 +49,7 @@ type ConsoleHandler struct {
 	serialLock           *sync.Mutex
 	vncLock              *sync.Mutex
 	vmiStore             cache.Store
+	nodeName             string
 	usbredir             map[types.UID]UsbredirHandlerVMI
 	usbredirLock         *sync.Mutex
 	vsockDialer          *virtvsock.Dialer
@@ -58,7 +59,7 @@ type UsbredirHandlerVMI struct {
 	stopChans map[int]chan struct{}
 }
 
-func NewConsoleHandler(podIsolationDetector isolation.PodIsolationDetector, vmiStore cache.Store, vsockDialer *virtvsock.Dialer) *ConsoleHandler {
+func NewConsoleHandler(podIsolationDetector isolation.PodIsolationDetector, vmiStore cache.Store, nodeName string, vsockDialer *virtvsock.Dialer) *ConsoleHandler {
 	return &ConsoleHandler{
 		podIsolationDetector: podIsolationDetector,
 		serialStopChans:      make(map[types.UID]chan struct{}),
@@ -67,13 +68,14 @@ func NewConsoleHandler(podIsolationDetector isolation.PodIsolationDetector, vmiS
 		vncLock:              &sync.Mutex{},
 		usbredirLock:         &sync.Mutex{},
 		vmiStore:             vmiStore,
+		nodeName:             nodeName,
 		usbredir:             make(map[types.UID]UsbredirHandlerVMI),
 		vsockDialer:          vsockDialer,
 	}
 }
 
 func (t *ConsoleHandler) USBRedirHandler(request *restful.Request, response *restful.Response) {
-	vmi, code, err := getVMI(request, t.vmiStore)
+	vmi, code, err := getVMI(request, t.vmiStore, t.nodeName)
 	if err != nil || vmi == nil {
 		log.Log.Reason(err).Error(failedRetrieveVMI)
 		response.WriteError(code, err)
@@ -143,7 +145,7 @@ func (t *ConsoleHandler) vncInUse(uid types.UID) bool {
 }
 
 func (t *ConsoleHandler) VNCHandler(request *restful.Request, response *restful.Response) {
-	vmi, code, err := getVMI(request, t.vmiStore)
+	vmi, code, err := getVMI(request, t.vmiStore, t.nodeName)
 	if err != nil || vmi == nil {
 		log.Log.Reason(err).Error(failedRetrieveVMI)
 		response.WriteError(code, err)
@@ -175,7 +177,7 @@ func (t *ConsoleHandler) VNCHandler(request *restful.Request, response *restful.
 }
 
 func (t *ConsoleHandler) SerialHandler(request *restful.Request, response *restful.Response) {
-	vmi, code, err := getVMI(request, t.vmiStore)
+	vmi, code, err := getVMI(request, t.vmiStore, t.nodeName)
 	if err != nil || vmi == nil {
 		log.Log.Reason(err).Error(failedRetrieveVMI)
 		response.WriteError(code, err)
@@ -194,7 +196,7 @@ func (t *ConsoleHandler) SerialHandler(request *restful.Request, response *restf
 }
 
 func (t *ConsoleHandler) VSOCKHandler(request *restful.Request, response *restful.Response) {
-	vmi, code, err := getVMI(request, t.vmiStore)
+	vmi, code, err := getVMI(request, t.vmiStore, t.nodeName)
 	if err != nil || vmi == nil {
 		log.Log.Reason(err).Error(failedRetrieveVMI)
 		response.WriteError(code, err)

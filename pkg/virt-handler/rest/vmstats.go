@@ -32,6 +32,7 @@ import (
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/log"
 
+	"kubevirt.io/kubevirt/pkg/controller"
 	cmdv1 "kubevirt.io/kubevirt/pkg/handler-launcher-com/cmd/v1"
 	"kubevirt.io/kubevirt/pkg/monitoring/metrics/virt-handler/collector"
 	virtconfig "kubevirt.io/kubevirt/pkg/virt-config"
@@ -117,18 +118,21 @@ func (s *VMStatsScraper) GetValues() map[string]*VMStatsResult {
 }
 
 type VMStatsHandler struct {
-	vmiStore      cache.Store
+	vmiIndexer    cache.Indexer
+	nodeName      string
 	clusterConfig *virtconfig.ClusterConfig
 	collector     collector.Collector
 }
 
 func NewVMStatsHandler(
-	vmiStore cache.Store,
+	vmiIndexer cache.Indexer,
+	nodeName string,
 	clusterConfig *virtconfig.ClusterConfig,
 	collector collector.Collector,
 ) *VMStatsHandler {
 	return &VMStatsHandler{
-		vmiStore:      vmiStore,
+		vmiIndexer:    vmiIndexer,
+		nodeName:      nodeName,
 		clusterConfig: clusterConfig,
 		collector:     collector,
 	}
@@ -150,11 +154,17 @@ func (h *VMStatsHandler) GetVMStats(request *restful.Request, response *restful.
 		return
 	}
 
+	// The informer is cluster-wide; the node index holds the VMIs running on
+	// this node, whose stats this endpoint can actually scrape.
+	nodeVMIs, err := controller.VMIsOnNode(h.vmiIndexer, h.nodeName)
+	if err != nil {
+		log.Log.Reason(err).Error("failed to list this node's VMIs for stats")
+		response.WriteError(http.StatusInternalServerError, err)
+		return
+	}
 	onNode := make(map[string]*v1.VirtualMachineInstance)
-	for _, obj := range h.vmiStore.List() {
-		if vmi, ok := obj.(*v1.VirtualMachineInstance); ok {
-			onNode[fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)] = vmi
-		}
+	for _, vmi := range nodeVMIs {
+		onNode[fmt.Sprintf("%s/%s", vmi.Namespace, vmi.Name)] = vmi
 	}
 
 	requests := body.resolve(onNode)

@@ -12,6 +12,7 @@ go_library(
     importpath = "kubevirt.io/kubevirt/pkg/virt-handler/rest",
     visibility = ["//visibility:public"],
     deps = [
+        "//pkg/controller:go_default_library",
         "//pkg/handler-launcher-com/cmd/v1:go_default_library",
         "//pkg/monitoring/metrics/virt-handler/collector:go_default_library",
         "//pkg/safepath:go_default_library",
@@ -46,6 +47,7 @@ go_test(
     embed = [":go_default_library"],
     race = "on",
     deps = [
+        "//pkg/controller:go_default_library",
         "//pkg/handler-launcher-com/cmd/v1:go_default_library",
         "//pkg/monitoring/metrics/virt-handler/collector:go_default_library",
         "//pkg/safepath:go_default_library",

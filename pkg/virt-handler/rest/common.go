@@ -30,7 +30,11 @@ import (
 	v1 "kubevirt.io/api/core/v1"
 )
 
-func getVMI(request *restful.Request, vmiStore cache.Store) (*v1.VirtualMachineInstance, int, error) {
+// getVMI resolves the VMI a request names. The store is cluster-wide, so the
+// lookup is also what keeps a handler to its own node: a VMI that runs
+// elsewhere is not this node's to serve, exactly as it was absent from the
+// node-scoped store this replaces.
+func getVMI(request *restful.Request, vmiStore cache.Store, nodeName string) (*v1.VirtualMachineInstance, int, error) {
 	key := fmt.Sprintf("%s/%s", request.PathParameter("namespace"), request.PathParameter("name"))
 	vmiObj, vmiExists, err := vmiStore.GetByKey(key)
 	if err != nil {
@@ -39,5 +43,9 @@ func getVMI(request *restful.Request, vmiStore cache.Store) (*v1.VirtualMachineI
 	if !vmiExists {
 		return nil, http.StatusNotFound, fmt.Errorf("VMI %s does not exist", key)
 	}
-	return vmiObj.(*v1.VirtualMachineInstance), 0, nil
+	vmi := vmiObj.(*v1.VirtualMachineInstance)
+	if vmi.Status.NodeName != nodeName {
+		return nil, http.StatusNotFound, fmt.Errorf("VMI %s does not exist on node %s", key, nodeName)
+	}
+	return vmi, 0, nil
 }

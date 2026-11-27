@@ -197,7 +197,6 @@ var _ = Describe("VirtualMachineInstance", func() {
 			util.KubeletRoot,
 			launcherClientManager,
 			vmiInformer,
-			vmiInformer.GetStore(),
 			domainInformer,
 			10,
 			config,
