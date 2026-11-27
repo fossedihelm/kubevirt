@@ -86,15 +86,15 @@ var (
 
 func SetupMigrationStatsCollector(
 	nodeName string,
-	sourceVMIInformer, globalVMIInformer cache.SharedIndexInformer,
+	vmiInformer cache.SharedIndexInformer,
 	domainInformer cache.SharedInformer,
 ) error {
-	if sourceVMIInformer == nil {
+	if vmiInformer == nil {
 		return nil
 	}
 
 	var err error
-	migrationdomainstatsHandler, err = newHandler(nodeName, sourceVMIInformer, globalVMIInformer, domainInformer)
+	migrationdomainstatsHandler, err = newHandler(nodeName, vmiInformer, domainInformer)
 	return err
 }
 

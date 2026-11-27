@@ -29,6 +29,7 @@ import (
 	k6sv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/log"
 
+	virtcontroller "kubevirt.io/kubevirt/pkg/controller"
 	"kubevirt.io/kubevirt/pkg/downwardmetrics"
 	"kubevirt.io/kubevirt/pkg/downwardmetrics/vhostmd"
 	"kubevirt.io/kubevirt/pkg/downwardmetrics/vhostmd/api"
@@ -192,17 +193,15 @@ func RunDownwardMetricsCollector(
 		for {
 			select {
 			case <-ticker.C:
-				cachedObjs := vmiInformer.GetIndexer().List()
-				if len(cachedObjs) == 0 {
+				vmis, err := virtcontroller.VMIsOnNode(vmiInformer.GetIndexer(), nodeName)
+				if err != nil {
+					log.Log.Reason(err).Error("failed to list this node's VMIs for downward metrics")
+					continue
+				}
+				if len(vmis) == 0 {
 					const debugVerbosityLevel = 4
 					log.Log.V(debugVerbosityLevel).Infof("No VMIs detected")
 					continue
-				}
-
-				vmis := []*k6sv1.VirtualMachineInstance{}
-
-				for _, obj := range cachedObjs {
-					vmis = append(vmis, obj.(*k6sv1.VirtualMachineInstance))
 				}
 				statsCollector.Collect(vmis, scraper, collector.CollectionTimeout)
 			case <-ctx.Done():

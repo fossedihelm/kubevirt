@@ -24,6 +24,7 @@ import (
 	k6tv1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/log"
 
+	virtcontroller "kubevirt.io/kubevirt/pkg/controller"
 	"kubevirt.io/kubevirt/pkg/monitoring/metrics/virt-handler/collector"
 )
 
@@ -58,12 +59,14 @@ type resourceMetrics interface {
 }
 
 type collectorSettings struct {
+	nodeName            string
 	maxRequestsInFlight int
 	vmiInformer         cache.SharedIndexInformer
 }
 
-func SetupDomainStatsCollector(maxRequestsInFlight int, vmiInformer cache.SharedIndexInformer) {
+func SetupDomainStatsCollector(nodeName string, maxRequestsInFlight int, vmiInformer cache.SharedIndexInformer) {
 	settings = &collectorSettings{
+		nodeName:            nodeName,
 		maxRequestsInFlight: maxRequestsInFlight,
 		vmiInformer:         vmiInformer,
 	}
@@ -80,16 +83,14 @@ func domainStatsMetrics(rms ...resourceMetrics) []operatormetrics.Metric {
 }
 
 func domainStatsCollectorCallback() []operatormetrics.CollectorResult {
-	cachedObjs := settings.vmiInformer.GetIndexer().List()
-	if len(cachedObjs) == 0 {
-		log.Log.V(logVerbosityDebug).Infof("No VMIs detected")
+	vmis, err := virtcontroller.VMIsOnNode(settings.vmiInformer.GetIndexer(), settings.nodeName)
+	if err != nil {
+		log.Log.Reason(err).Error("failed to list this node's VMIs for domain stats")
 		return []operatormetrics.CollectorResult{}
 	}
-
-	vmis := make([]*k6tv1.VirtualMachineInstance, len(cachedObjs))
-
-	for i, obj := range cachedObjs {
-		vmis[i] = obj.(*k6tv1.VirtualMachineInstance)
+	if len(vmis) == 0 {
+		log.Log.V(logVerbosityDebug).Infof("No VMIs detected")
+		return []operatormetrics.CollectorResult{}
 	}
 
 	concCollector := collector.NewConcurrentCollector(settings.maxRequestsInFlight)

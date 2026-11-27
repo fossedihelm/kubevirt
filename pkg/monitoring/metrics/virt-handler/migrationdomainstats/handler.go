@@ -40,10 +40,9 @@ type vmiQueue interface {
 type handler struct {
 	sync.Mutex
 
-	sourceVMIStore cache.Store
-	globalVMIStore cache.Store
-	vmiStats       map[string]vmiQueue
-	nodeName       string
+	vmiStore cache.Store
+	vmiStats map[string]vmiQueue
+	nodeName string
 
 	// Completed downtime follows the VMI across node handoff. It is removed when
 	// the VMI disappears or a newer migration succeeds.
@@ -59,18 +58,17 @@ type completedMigrationResult struct {
 
 func newHandler(
 	nodeName string,
-	sourceVMIInformer, globalVMIInformer cache.SharedIndexInformer,
+	vmiInformer cache.SharedIndexInformer,
 	domainInformer cache.SharedInformer,
 ) (*handler, error) {
 	h := handler{
-		sourceVMIStore:          sourceVMIInformer.GetStore(),
-		globalVMIStore:          globalVMIInformer.GetStore(),
+		vmiStore:                vmiInformer.GetStore(),
 		vmiStats:                make(map[string]vmiQueue),
 		nodeName:                nodeName,
 		completedMigrationStats: make(map[string]completedMigrationResult),
 	}
 
-	_, err := sourceVMIInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+	_, err := vmiInformer.AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    h.handleVmiAdd,
 		UpdateFunc: h.handleVmiUpdate,
 	})
@@ -110,7 +108,7 @@ func (h *handler) Collect() []result {
 	}
 
 	for key, completedStats := range h.completedMigrationStats {
-		obj, exists, err := h.globalVMIStore.GetByKey(key)
+		obj, exists, err := h.vmiStore.GetByKey(key)
 		if err != nil {
 			log.Log.Reason(err).Errorf("failed to look up VMI %s for completed migration stats", key)
 			continue
@@ -133,24 +131,29 @@ func (h *handler) Collect() []result {
 	return allResults
 }
 
+// The handlers track the migrations this node is the source of: the informer
+// is cluster-wide, so they filter for the VMIs running here, whose domains are
+// the ones carrying the migration job.
 func (h *handler) handleVmiUpdate(_oldObj, newObj interface{}) {
 	newVmi := newObj.(*v1.VirtualMachineInstance)
-
-	if newVmi.Status.MigrationState == nil || newVmi.Status.MigrationState.Completed {
-		return
+	if h.shouldTrack(newVmi) {
+		h.addMigration(newVmi)
 	}
-
-	h.addMigration(newVmi)
 }
 
 func (h *handler) handleVmiAdd(obj interface{}) {
 	vmi := obj.(*v1.VirtualMachineInstance)
-
-	if vmi.Status.MigrationState == nil || vmi.Status.MigrationState.Completed {
-		return
+	if h.shouldTrack(vmi) {
+		h.addMigration(vmi)
 	}
+}
 
-	h.addMigration(vmi)
+// shouldTrack reports whether vmi's migration progress is this node's to
+// report.
+func (h *handler) shouldTrack(vmi *v1.VirtualMachineInstance) bool {
+	return vmi.Status.NodeName == h.nodeName &&
+		vmi.Status.MigrationState != nil &&
+		!vmi.Status.MigrationState.Completed
 }
 
 func (h *handler) handleDomainCompletedMigrationStats(obj interface{}) {
@@ -231,11 +234,11 @@ func hasNewerSuccessfulMigration(vmi *v1.VirtualMachineInstance, migrationUID st
 }
 
 func (h *handler) vmiForCompletedStats(key string) (*v1.VirtualMachineInstance, bool) {
-	if h.globalVMIStore == nil {
+	if h.vmiStore == nil {
 		return nil, false
 	}
 
-	obj, exists, err := h.globalVMIStore.GetByKey(key)
+	obj, exists, err := h.vmiStore.GetByKey(key)
 	if err != nil {
 		log.Log.Reason(err).Errorf("failed to look up VMI %s for completed migration stats", key)
 		return nil, false
@@ -263,7 +266,7 @@ func (h *handler) addMigration(vmi *v1.VirtualMachineInstance) {
 		return
 	}
 
-	q := newQueue(h.sourceVMIStore, vmi)
+	q := newQueue(h.vmiStore, vmi)
 	q.startPolling()
 	h.vmiStats[key] = q
 }

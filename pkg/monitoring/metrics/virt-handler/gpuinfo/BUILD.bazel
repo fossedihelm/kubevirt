@@ -9,6 +9,7 @@ go_library(
     importpath = "kubevirt.io/kubevirt/pkg/monitoring/metrics/virt-handler/gpuinfo",
     visibility = ["//visibility:public"],
     deps = [
+        "//pkg/controller:go_default_library",
         "//pkg/monitoring/metrics/virt-handler/gpuinfo/podresources:go_default_library",
         "//pkg/util:go_default_library",
         "//pkg/util/net/grpc:go_default_library",

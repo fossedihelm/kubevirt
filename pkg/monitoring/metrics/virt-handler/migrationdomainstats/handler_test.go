@@ -119,7 +119,7 @@ var _ = Describe("Handler", func() {
 				},
 			}
 			Expect(vmiStore.Add(vmi)).To(Succeed())
-			h.globalVMIStore = vmiStore
+			h.vmiStore = vmiStore
 		})
 
 		It("should store completed downtime without modifying the active queue", func() {
@@ -295,6 +295,35 @@ var _ = Describe("Handler", func() {
 		},
 			Entry("discarding the prior result after a newer success", false, 0, "", uint64(0)),
 			Entry("retaining the prior result after a newer failure", true, 1, "migration-1", uint64(70)),
+		)
+	})
+
+	Describe("shouldTrack", func() {
+		DescribeTable("should decide whether a VMI's migration is this node's to report",
+			func(nodeName string, mutate func(vmi *v1.VirtualMachineInstance), expected bool) {
+				vmi := &v1.VirtualMachineInstance{
+					ObjectMeta: metav1.ObjectMeta{Name: "test-vmi", Namespace: "default"},
+					Status: v1.VirtualMachineInstanceStatus{
+						NodeName: "source-node",
+						MigrationState: &v1.VirtualMachineInstanceMigrationState{
+							MigrationUID: "migration-1",
+						},
+					},
+				}
+				vmi.Status.NodeName = nodeName
+				mutate(vmi)
+				Expect(h.shouldTrack(vmi)).To(Equal(expected))
+			},
+			// The informer is cluster-wide; only the VMIs running here have their
+			// migration job in a domain on this node.
+			Entry("a VMI migrating away from this node", "source-node", func(vmi *v1.VirtualMachineInstance) {}, true),
+			Entry("a VMI migrating on another node", "other-node", func(vmi *v1.VirtualMachineInstance) {}, false),
+			Entry("a VMI running here without a migration", "source-node", func(vmi *v1.VirtualMachineInstance) {
+				vmi.Status.MigrationState = nil
+			}, false),
+			Entry("a VMI whose migration already completed", "source-node", func(vmi *v1.VirtualMachineInstance) {
+				vmi.Status.MigrationState.Completed = true
+			}, false),
 		)
 	})
 })

@@ -82,6 +82,7 @@ go_test(
         "controller_suite_test.go",
         "controller_test.go",
         "expectations_test.go",
+        "virtinformers_test.go",
     ],
     embed = [":go_default_library"],
     race = "on",

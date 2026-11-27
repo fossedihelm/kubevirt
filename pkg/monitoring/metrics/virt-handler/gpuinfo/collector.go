@@ -31,6 +31,7 @@ import (
 	v1 "kubevirt.io/api/core/v1"
 	"kubevirt.io/client-go/log"
 
+	"kubevirt.io/kubevirt/pkg/controller"
 	"kubevirt.io/kubevirt/pkg/monitoring/metrics/virt-handler/gpuinfo/podresources"
 	"kubevirt.io/kubevirt/pkg/util"
 	kvgrpc "kubevirt.io/kubevirt/pkg/util/net/grpc"
@@ -143,19 +144,20 @@ func (c *gpuInfoCache) fetchGPUAllocations() ([]GPUAllocation, error) {
 	return allocations, nil
 }
 
-// vmisInNamespace returns the node-local VMIs in the given namespace, using the
-// informer's namespace index to avoid scanning the whole store. The returned
+// vmisInNamespace returns the VMIs running on this node in the given
+// namespace. The informer is cluster-wide, so the node index is what scopes it
+// down; the namespace is then matched in the small local set. The returned
 // values are pointers into the shared informer cache and must not be mutated.
 func (c *gpuInfoCache) vmisInNamespace(namespace string) []*v1.VirtualMachineInstance {
-	objs, err := c.vmiInformer.GetIndexer().ByIndex(cache.NamespaceIndex, namespace)
+	nodeVMIs, err := controller.VMIsOnNode(c.vmiInformer.GetIndexer(), c.nodeName)
 	if err != nil {
-		log.Log.Warningf("Failed to look up VMIs in namespace %s: %v", namespace, err)
+		log.Log.Warningf("Failed to look up this node's VMIs: %v", err)
 		return nil
 	}
 
-	vmis := make([]*v1.VirtualMachineInstance, 0, len(objs))
-	for _, obj := range objs {
-		if vmi, ok := obj.(*v1.VirtualMachineInstance); ok {
+	vmis := make([]*v1.VirtualMachineInstance, 0, len(nodeVMIs))
+	for _, vmi := range nodeVMIs {
+		if vmi.Namespace == namespace {
 			vmis = append(vmis, vmi)
 		}
 	}

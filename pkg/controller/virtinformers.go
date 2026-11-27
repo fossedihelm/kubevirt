@@ -460,10 +460,35 @@ func (f *kubeInformerFactory) Namespace() cache.SharedIndexInformer {
 	})
 }
 
+// VMINodeIndex is the name of the VMI informer index keyed by the node a VMI
+// runs on (Status.NodeName).
+const VMINodeIndex = "node"
+
+// VMIsOnNode returns the VMIs running on nodeName, through the node index of
+// an informer created with GetVMIInformerIndexers(). It answers the read-side
+// question the node-scoped VMI informers used to answer with their label
+// selector: Status.NodeName and NodeNameLabel are always written in the same
+// VMI update, both at scheduling and at migration hand-over, so the two never
+// disagree in a cache.
+func VMIsOnNode(indexer cache.Indexer, nodeName string) ([]*kubev1.VirtualMachineInstance, error) {
+	objs, err := indexer.ByIndex(VMINodeIndex, nodeName)
+	if err != nil {
+		return nil, err
+	}
+
+	vmis := make([]*kubev1.VirtualMachineInstance, 0, len(objs))
+	for _, obj := range objs {
+		if vmi, ok := obj.(*kubev1.VirtualMachineInstance); ok {
+			vmis = append(vmis, vmi)
+		}
+	}
+	return vmis, nil
+}
+
 func GetVMIInformerIndexers() cache.Indexers {
 	return cache.Indexers{
 		cache.NamespaceIndex: cache.MetaNamespaceIndexFunc,
-		"node": func(obj interface{}) (strings []string, e error) {
+		VMINodeIndex: func(obj interface{}) (strings []string, e error) {
 			return []string{obj.(*kubev1.VirtualMachineInstance).Status.NodeName}, nil
 		},
 		"dv": func(obj interface{}) ([]string, error) {
